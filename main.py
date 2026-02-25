@@ -2,6 +2,8 @@ import cv2
 import cv2.aruco as aruco
 import numpy as np
 import time
+import matplotlib.pyplot as plt
+import random
 
 def draw_two_axes(img, camera_matrix, dist_coeffs, rvec, tvec, length: float = 0.05):
     # 3D points: origin, X, Y
@@ -23,6 +25,13 @@ def draw_two_axes(img, camera_matrix, dist_coeffs, rvec, tvec, length: float = 0
     return img
 
 def main():
+    plt.ion() # Turn on interactive mode
+    fig, ax = plt.subplots()
+    x, y = [], []
+    hl, = ax.plot([], [], 'ro')
+    ax.set_xlim(-1, 1)
+    ax.set_ylim(-1, 1)
+
     # Camera calibration (example values)
     camera_matrix = np.array([[800, 0, 320],
                               [0, 800, 240],
@@ -97,9 +106,23 @@ def main():
         if cv2.waitKey(1) & 0xFF == 27:  # ESC to quit
             break
 
-        print("rvec: ", rvec)
-        print("tvec: ", tvec)
-        time.sleep(5)
+        # print("rvec: ", rvec)
+        print("tvec: ", tvec[0], tvec[1])
+
+
+        # 1. Update data
+
+        # 2. Update the plot line
+        hl.set_data([tvec[0][0]], [tvec[1][0]])
+        
+        # 4. Redraw the canvas
+        fig.canvas.draw()
+        fig.canvas.flush_events() # Process any GUI events
+
+        # 5. Pause for a short duration to control update speed
+        plt.pause(0.01) # Pause duration in seconds
+
+
 
     cap.release()
     cv2.destroyAllWindows()
