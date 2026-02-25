@@ -32,12 +32,18 @@ def main():
     ax.set_xlim(-1, 1)
     ax.set_ylim(-1, 1)
 
+
+    data = np.load("camera_params.npz")
+    camera_matrix = data["camera_matrix"]
+    dist_coeffs = data["dist_coeffs"]
+
+
     # Camera calibration (example values)
-    camera_matrix = np.array([[800, 0, 320],
-                              [0, 800, 240],
-                              [0, 0, 1]], dtype=np.float32)
+    # camera_matrix = np.array([[800, 0, 320],
+    #                           [0, 800, 240],
+    #                           [0, 0, 1]], dtype=np.float32)
     
-    dist_coeffs = np.zeros((5, 1), dtype=np.float32)
+    # dist_coeffs = np.zeros((5, 1), dtype=np.float32)
 
     marker_length = 0.05  # meters
 
