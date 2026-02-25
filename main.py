@@ -101,7 +101,7 @@ def main():
                 # Draw axes
                 draw_two_axes(frame, camera_matrix, dist_coeffs, rvec, tvec, 0.03)
 
-        # Display frame
+        # # Display frame
         cv2.imshow("ArUco Tracking", frame)
         if cv2.waitKey(1) & 0xFF == 27:  # ESC to quit
             break
@@ -109,17 +109,11 @@ def main():
         # print("rvec: ", rvec)
         print("tvec: ", tvec[0], tvec[1])
 
-
-        # 1. Update data
-
-        # 2. Update the plot line
         hl.set_data([tvec[0][0]], [tvec[1][0]])
         
-        # 4. Redraw the canvas
         fig.canvas.draw()
         fig.canvas.flush_events() # Process any GUI events
 
-        # 5. Pause for a short duration to control update speed
         plt.pause(0.01) # Pause duration in seconds
 
 
