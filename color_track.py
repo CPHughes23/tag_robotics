@@ -2,9 +2,9 @@ import cv2
 import numpy as np
 import matplotlib.pyplot as plt
 import math
+import argparse
 
 # --- Tune these HSV ranges for your specific lighting conditions ---
-# Use the HSV tuner script below if colors aren't detecting well
 BLUE_LOWER = np.array([80, 51, 159])
 BLUE_UPPER = np.array([115, 255, 255])
 
@@ -85,14 +85,15 @@ def draw_tracking_overlay(frame, blue_center, green_center):
     return frame
 
 
-def main():
-    plt.ion()
-    fig, ax = plt.subplots()
-    ax.set_title("Car Position (pixels)")
-    hl, = ax.plot([], [], 'ro', markersize=8)
-    ax.set_xlim(0, 640)
-    ax.set_ylim(0, 480)
-    ax.invert_yaxis()  # Match image coordinate system
+def main(show_plot=False):
+    if show_plot:
+        plt.ion()
+        fig, ax = plt.subplots()
+        ax.set_title("Car Position (pixels)")
+        hl, = ax.plot([], [], 'ro', markersize=8)
+        ax.set_xlim(0, 640)
+        ax.set_ylim(0, 480)
+        ax.invert_yaxis()  # Match image coordinate system
 
     cap = cv2.VideoCapture(0)
     if not cap.isOpened():
@@ -128,10 +129,10 @@ def main():
             angle = math.atan2(last_green[1] - last_blue[1],
                                last_green[0] - last_blue[0])
             print(f"Position: ({mid_x:.1f}, {mid_y:.1f})  Heading: {math.degrees(angle):.1f} deg")
-
-            hl.set_data([mid_x], [mid_y])
-            fig.canvas.draw()
-            fig.canvas.flush_events()
+            if show_plot:
+                hl.set_data([mid_x], [mid_y])
+                fig.canvas.draw()
+                fig.canvas.flush_events()
 
         # Show debug masks side by side (helpful for tuning HSV ranges)
         debug_masks = cv2.hconcat([
@@ -143,12 +144,22 @@ def main():
 
         if cv2.waitKey(1) & 0xFF == 27:
             break
-
-        plt.pause(0.01)
+        if show_plot:
+            plt.pause(0.01)
 
     cap.release()
     cv2.destroyAllWindows()
 
+    if show_plot:
+        plt.ioff()
+        plt.close()
+
 
 if __name__ == '__main__':
-    main()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--plot", action="store_true",
+                        help="Enable matplotlib plotting of car position")
+    
+    args = parser.parse_args()
+
+    main(show_plot=args.plot)
