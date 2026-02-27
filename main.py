@@ -1,131 +1,154 @@
 import cv2
-import cv2.aruco as aruco
 import numpy as np
-import time
 import matplotlib.pyplot as plt
-import random
+import math
 
-def draw_two_axes(img, camera_matrix, dist_coeffs, rvec, tvec, length: float = 0.05):
-    # 3D points: origin, X, Y
-    axis_points = np.array([
-        [0.0, 0.0, 0.0],
-        [length, 0.0, 0.0],
-        [0.0, length, 0.0],
-    ], dtype=np.float32)
+# --- Tune these HSV ranges for your specific lighting conditions ---
+# Use the HSV tuner script below if colors aren't detecting well
+BLUE_LOWER = np.array([80, 51, 159])
+BLUE_UPPER = np.array([115, 255, 255])
 
-    imgpts, _ = cv2.projectPoints(axis_points, rvec, tvec, camera_matrix, dist_coeffs)
+GREEN_LOWER = np.array([40, 80, 70])
+GREEN_UPPER = np.array([80, 255, 255])
 
-    origin = tuple(imgpts[0].ravel().astype(int))
-    x_axis = tuple(imgpts[1].ravel().astype(int))
-    y_axis = tuple(imgpts[2].ravel().astype(int))
+MIN_BLOB_AREA = 200  # Minimum pixel area to count as a valid detection (filters noise)
 
-    cv2.line(img, origin, x_axis, (0, 0, 255), 3)  # X axis in red
-    cv2.line(img, origin, y_axis, (0, 255, 0), 3)  # Y axis in green
 
-    return img
+def find_color_centroid(hsv_frame, lower, upper):
+    """
+    Masks the frame for a given HSV color range and returns the
+    centroid of the largest blob found, or None if nothing detected.
+    """
+    mask = cv2.inRange(hsv_frame, lower, upper)
+
+    # Morphological ops to clean up the mask
+    kernel = np.ones((5, 5), np.uint8)
+    mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)   # removes small noise
+    mask = cv2.morphologyEx(mask, cv2.MORPH_DILATE, kernel) # fills small gaps
+
+    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+    if not contours:
+        return None, mask
+
+    # Pick the largest contour
+    largest = max(contours, key=cv2.contourArea)
+    if cv2.contourArea(largest) < MIN_BLOB_AREA:
+        return None, mask
+
+    M = cv2.moments(largest)
+    if M["m00"] == 0:
+        return None, mask
+
+    cx = int(M["m10"] / M["m00"])
+    cy = int(M["m01"] / M["m00"])
+    return (cx, cy), mask
+
+
+def draw_tracking_overlay(frame, blue_center, green_center):
+    """
+    Draws the detected dot positions, the midpoint, and an orientation arrow.
+    """
+    if blue_center:
+        cv2.circle(frame, blue_center, 10, (255, 100, 0), -1)
+        cv2.putText(frame, "B", (blue_center[0] + 12, blue_center[1]),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 100, 0), 2)
+
+    if green_center:
+        cv2.circle(frame, green_center, 10, (0, 255, 0), -1)
+        cv2.putText(frame, "G", (green_center[0] + 12, green_center[1]),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+
+    if blue_center and green_center:
+        # Midpoint = position of the car
+        mid_x = (blue_center[0] + green_center[0]) // 2
+        mid_y = (blue_center[1] + green_center[1]) // 2
+        midpoint = (mid_x, mid_y)
+
+        cv2.circle(frame, midpoint, 6, (0, 255, 255), -1)
+        cv2.line(frame, blue_center, green_center, (255, 255, 255), 2)
+
+        # Draw orientation arrow from midpoint in the direction of the heading
+        angle = math.atan2(green_center[1] - blue_center[1],
+                           green_center[0] - blue_center[0])
+        arrow_len = 60
+        arrow_end = (
+            int(mid_x + arrow_len * math.cos(angle)),
+            int(mid_y + arrow_len * math.sin(angle))
+        )
+        cv2.arrowedLine(frame, midpoint, arrow_end, (0, 255, 255), 2, tipLength=0.3)
+
+        angle_deg = math.degrees(angle)
+        cv2.putText(frame, f"Heading: {angle_deg:.1f} deg",
+                    (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
+
+    return frame
+
 
 def main():
-    plt.ion() # Turn on interactive mode
+    plt.ion()
     fig, ax = plt.subplots()
-    x, y = [], []
-    hl, = ax.plot([], [], 'ro')
-    ax.set_xlim(-1, 1)
-    ax.set_ylim(-1, 1)
+    ax.set_title("Car Position (pixels)")
+    hl, = ax.plot([], [], 'ro', markersize=8)
+    ax.set_xlim(0, 640)
+    ax.set_ylim(0, 480)
+    ax.invert_yaxis()  # Match image coordinate system
 
-
-    data = np.load("camera_params.npz")
-    camera_matrix = data["camera_matrix"]
-    dist_coeffs = data["dist_coeffs"]
-
-
-    # Camera calibration (example values)
-    # camera_matrix = np.array([[800, 0, 320],
-    #                           [0, 800, 240],
-    #                           [0, 0, 1]], dtype=np.float32)
-    
-    # dist_coeffs = np.zeros((5, 1), dtype=np.float32)
-
-    marker_length = 0.05  # meters
-
-    # 3D object points of a square marker relative to its center
-    obj_points = np.array([
-        [-marker_length/2,  marker_length/2, 0],
-        [ marker_length/2,  marker_length/2, 0],
-        [ marker_length/2, -marker_length/2, 0],
-        [-marker_length/2, -marker_length/2, 0]
-    ], dtype=np.float32)
-
-    # Open video capture
     cap = cv2.VideoCapture(0)
     if not cap.isOpened():
         print("Cannot open camera")
         return
 
-    # Setup ArUco detector
-    aruco_dict = aruco.getPredefinedDictionary(aruco.DICT_6X6_250)
-    aruco_params = aruco.DetectorParameters()
-    aruco_params.cornerRefinementMethod = aruco.CORNER_REFINE_SUBPIX  # smoother corners
-    detector = aruco.ArucoDetector(aruco_dict, aruco_params)
-
-    # Dictionaries to store last known poses per marker ID
-    last_rvec = {}
-    last_tvec = {}
+    # Store last known positions so the plot doesn't blank when detection drops
+    last_blue = None
+    last_green = None
 
     while True:
         ret, frame = cap.read()
         if not ret:
             break
 
-        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        corners, ids, rejected = detector.detectMarkers(gray)
+        hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
 
-        if ids is not None:
-            # Draw detected marker outlines
-            aruco.drawDetectedMarkers(frame, corners, ids)
+        blue_center, blue_mask = find_color_centroid(hsv, BLUE_LOWER, BLUE_UPPER)
+        green_center, green_mask = find_color_centroid(hsv, GREEN_LOWER, GREEN_UPPER)
 
-            for i in range(len(ids)):
-                marker_id = int(ids[i][0])
+        # Fall back to last known position if detection drops for a frame
+        if blue_center:
+            last_blue = blue_center
+        if green_center:
+            last_green = green_center
 
-                # SolvePnP for this marker
-                success, rvec, tvec = cv2.solvePnP(
-                    obj_points, corners[i], camera_matrix, dist_coeffs,
-                    flags=cv2.SOLVEPNP_IPPE_SQUARE
-                )
+        frame = draw_tracking_overlay(frame, blue_center, green_center)
 
-                if success:
-                    # Update last known pose
-                    last_rvec[marker_id] = rvec
-                    last_tvec[marker_id] = tvec
-                else:
-                    # If detection fails, fallback to last known pose
-                    if marker_id in last_rvec:
-                        rvec = last_rvec[marker_id]
-                        tvec = last_tvec[marker_id]
-                    else:
-                        continue  # no pose to draw yet
+        # Print and plot midpoint when both dots are visible
+        if last_blue and last_green:
+            mid_x = (last_blue[0] + last_green[0]) / 2
+            mid_y = (last_blue[1] + last_green[1]) / 2
+            angle = math.atan2(last_green[1] - last_blue[1],
+                               last_green[0] - last_blue[0])
+            print(f"Position: ({mid_x:.1f}, {mid_y:.1f})  Heading: {math.degrees(angle):.1f} deg")
 
-                # Draw axes
-                draw_two_axes(frame, camera_matrix, dist_coeffs, rvec, tvec, 0.03)
+            hl.set_data([mid_x], [mid_y])
+            fig.canvas.draw()
+            fig.canvas.flush_events()
 
-        # # Display frame
-        cv2.imshow("ArUco Tracking", frame)
-        if cv2.waitKey(1) & 0xFF == 27:  # ESC to quit
+        # Show debug masks side by side (helpful for tuning HSV ranges)
+        debug_masks = cv2.hconcat([
+            cv2.cvtColor(blue_mask, cv2.COLOR_GRAY2BGR),
+            cv2.cvtColor(green_mask, cv2.COLOR_GRAY2BGR)
+        ])
+        cv2.imshow("Masks: Blue | Green", debug_masks)
+        cv2.imshow("Color Tracking", frame)
+
+        if cv2.waitKey(1) & 0xFF == 27:
             break
 
-        # print("rvec: ", rvec)
-        print("tvec: ", tvec[0], tvec[1])
-
-        hl.set_data([tvec[0][0]], [tvec[1][0]])
-        
-        fig.canvas.draw()
-        fig.canvas.flush_events() # Process any GUI events
-
-        plt.pause(0.01) # Pause duration in seconds
-
-
+        plt.pause(0.01)
 
     cap.release()
     cv2.destroyAllWindows()
+
 
 if __name__ == '__main__':
     main()
