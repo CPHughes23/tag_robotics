@@ -389,3 +389,12 @@ Then follow laptop setup from step 3.
 ## License
 
 This project is released under the [MIT License](LICENSE).
+
+## Citation
+
+@misc{hughes2026rccar,
+author = {Hughes, Casey and Teuttli, Sebastian},
+title = {RC Car Autonomous Navigation via Reinforcement Learning},
+year = {2026},
+url = {https://github.com/CPHughes23/tag_robotics.git}
+}
