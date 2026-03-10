@@ -206,7 +206,7 @@ The RC car environment is implemented as a `DirectRLEnv` in Isaac Lab with:
 #### 1. Clone the repo
 
 ```bash
-git clone <your-github-url>
+git clone https://github.com/CPHughes23/tag_robotics.git
 cd tag_robotics
 ```
 
@@ -333,7 +333,7 @@ IsaacLab/isaaclab.sh -p isaac_training/train.py --num_envs 4 --max_iterations 5
 #### 1. Clone the repo
 
 ```bash
-git clone <your-github-url>
+git clone https://github.com/CPHughes23/tag_robotics.git
 cd tag_robotics
 ```
 
@@ -505,10 +505,10 @@ If you use this project in your research, please cite:
 
 ```bibtex
 @misc{hughes2026rccar,
-  author = {Hughes, Casey and [Partner's Name]},
+  author = {Hughes, Casey and Teuttli, Sebastian},
   title  = {RC Car Autonomous Navigation via Reinforcement Learning},
   year   = {2026},
-  url    = {https://github.com/<your-github-url>}
+  url    = {https://github.com/https://github.com/CPHughes23/tag_robotics.git}
 }
 ```
 
