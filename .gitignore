@@ -1,13 +1,59 @@
-.venv/
-.vscode/
-calib_images/
-camera_params.npz
-charuco_board.png
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
 
-# Trained model checkpoints
-isaac_training/models/
+# Environments
+.venv/
+env/
+venv/
+
+# Isaac Lab (cloned separately, not part of this repo)
+IsaacLab/
 
 # Isaac Sim generated files
 *.usd
-__pycache__/
-*.pyc 
+*.usdz
+*.usdc
+
+# URDF converter outputs
+*.asset_hash
+isaac_training/config.yaml
+
+# Trained models and checkpoints
+isaac_training/models/
+*.pt
+*.pth
+
+# Logs
+*.log
+runs/
+logs/
+
+# TensorBoard
+isaac_training/models/
+
+# Wandb
+wandb/
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Misc
+*.egg-info/
+dist/
+build/
+.eggs/
