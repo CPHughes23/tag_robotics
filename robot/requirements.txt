@@ -1,7 +1,9 @@
-# ── Install these manually BEFORE pip install -r requirements.txt ──
+# ============================================================
+# Install PyTorch separately BEFORE running pip install -r requirements.txt
+#
 # PyTorch (Apple Silicon MPS):
-#   pip install torch
-# ──────────────────────────────────────────────────────────────────
+#    pip install torch
+# ============================================================
 
 # Core
 numpy==1.26.4
