@@ -157,7 +157,7 @@ Accept the EULA when prompted. Then run once to complete first-time setup:
 isaacsim --accept-eula
 ```
 
-Wait for `Isaac Sim Full App is loaded.` then exit with `Ctrl+C`.
+Wait for `Isaac Sim Full App is loaded.` (this may take a while) then exit with `Ctrl+C`.
 
 #### 6. Link the Isaac Sim runtime extensions
 
@@ -309,19 +309,8 @@ tensorboard --logdir isaac_training/models/trained/
 
 ```bash
 IsaacLab/isaaclab.sh -p isaac_training/evaluate.py \
-    --checkpoint isaac_training/models/trained/<run>/model_1000.pt \
+    --checkpoint isaac_training/models/trained/<run>/<model>.pt \
     --num_envs 4
-```
-
-### Deploy to the laptop
-
-```bash
-# Copy checkpoint to laptop
-scp isaac_training/models/trained/<run>/model_1000.pt user@laptop:~/
-
-# Run on laptop
-source .venv/bin/activate
-python robot/<inference_script>.py --checkpoint ~/model_1000.pt
 ```
 
 ---
