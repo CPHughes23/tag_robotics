@@ -2,15 +2,18 @@
 # Install these manually BEFORE running pip install -r requirements.txt
 #
 # 1. Isaac Sim:
-#    pip install isaacsim==5.1.0.0 --extra-index-url https://pypi.nvidia.com
+#    pip install isaacsim==5.1.0 --extra-index-url https://pypi.nvidia.com
+#    isaacsim --accept-eula
 #
-# 2. PyTorch (CUDA 12.8):
+# 2. Link Isaac Sim extensions (see README for full command)
+#
+# 3. PyTorch (CUDA 12.8):
 #    pip install torch==2.7.0+cu128 torchvision==0.22.0+cu128 \
 #        --index-url https://download.pytorch.org/whl/cu128
 #
-# 3. Isaac Lab:
-#    pip install -e path/to/IsaacLab/source/isaaclab
-#    pip install -e path/to/IsaacLab/source/isaaclab_rl
+# 4. Isaac Lab:
+#    pip install -e IsaacLab/source/isaaclab
+#    pip install -e IsaacLab/source/isaaclab_rl
 # ============================================================
 
 # Core
