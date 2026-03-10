@@ -26,25 +26,25 @@ The pipeline runs across two machines:
 | Desktop (Linux) | Simulation, training, evaluation                    | Isaac Lab + conda | CUDA (NVIDIA GPU)          |
 | Laptop          | Camera detection, policy inference, Arduino control | venv              | MPS (Apple Silicon) or CPU |
 
-### How It Works
+### System Pipeline
 
 ```
 ┌─────────────────────────────────┐         ┌──────────────────────────────────┐
 │         DESKTOP                 │         │           LAPTOP                 │
 │                                 │         │                                  │
-│  rc_car.urdf                    │         │  Camera feed                     │
+│  rc_car.urdf                    │         │  Overhead camera                 │
 │      │                          │         │      │                           │
 │      ▼                          │         │      ▼                           │
-│  convert_urdf.py                │         │  Detection model                 │
+│  Isaac Lab (64 parallel envs)   │         │  Color blob detection            │
 │      │                          │         │      │                           │
 │      ▼                          │  .pt    │      ▼                           │
-│  Isaac Lab (64 parallel envs)   │ ──────► │  Policy inference                │
+│  PPO training                   │ ──────► │  Policy inference                │
 │      │                          │         │      │                           │
 │      ▼                          │         │      ▼                           │
-│  PPO training (train.py)        │         │  Arduino serial control          │
-│      │                          │         │      │                           │
-│      ▼                          │         │      ▼                           │
-│  Checkpoint (.pt)               │         │  Physical RC car                 │
+│  Checkpoint (.pt)               │         │  Arduino serial control          │
+│                                 │         │      │                           │
+│                                 │         │      ▼                           │
+│                                 │         │  Physical RC car                 │
 └─────────────────────────────────┘         └──────────────────────────────────┘
 ```
 
@@ -69,6 +69,110 @@ tag_robotics/
     ├── requirements.txt
     └── ...
 ```
+
+---
+
+## Tracking
+
+The camera tracking system is responsible for bridging simulation and reality. During training
+the policy receives clean observations directly from the simulator. At deployment time those
+same observations need to come from the real world — this is the tracking system's job.
+
+Two colored blobs are mounted on the physical RC car and tracked by an overhead camera.
+This gives the laptop everything it needs to reconstruct the observation vector the policy
+expects, with no retraining or fine-tuning required.
+
+```
+        overhead camera
+               │
+               ▼
+    ┌──────────────────────┐
+    │   color blob         │
+    │   detection          │
+    └──────────┬───────────┘
+               │
+       ┌───────┴────────┐
+       │                │
+       ▼                ▼
+  centroid of        vector between
+  both blobs         both blobs
+  → position (x,y)   → heading (yaw)
+       │                │
+       └───────┬────────┘
+               │
+               ▼
+    ┌──────────────────────┐
+    │  reconstruct the 6D  │
+    │  observation vector  │
+    └──────────┬───────────┘
+               │
+               ▼
+    ┌──────────────────────┐
+    │   trained policy     │
+    │   (unchanged)        │
+    └──────────┬───────────┘
+               │
+               ▼
+    ┌──────────────────────┐
+    │  Arduino → RC car    │
+    └──────────────────────┘
+```
+
+**Position** is estimated from the centroid of the two blobs in the camera frame.
+**Heading** is estimated from the angle of the vector connecting them — the front blob
+and rear blob are different colors, so the direction of travel is unambiguous.
+These are combined with the known target position to produce the full observation
+vector at every inference step.
+
+> 📷 _Demo GIF coming soon_
+
+---
+
+## Hardware
+
+The physical system consists of an RC car chassis, an Arduino microcontroller, and a laptop
+running the detection and inference pipeline.
+
+<div align="center">
+
+| Component       | Role                                                               |
+| --------------- | ------------------------------------------------------------------ |
+| RC car chassis  | Physical platform                                                  |
+| Arduino         | Receives commands over serial, drives motor and steering servo     |
+| Laptop          | Runs camera detection, policy inference, sends commands to Arduino |
+| Overhead camera | Tracks the colored blobs on the car                                |
+
+</div>
+
+### How They Connect
+
+The laptop communicates with the Arduino over USB serial. At each inference step the laptop
+sends a single action index (0–5) representing one of the six driving commands. The Arduino
+maps this to the appropriate motor speed and steering angle and drives the car accordingly.
+
+```
+Laptop
+  │
+  │  USB serial (action index 0-5)
+  │
+  ▼
+Arduino
+  ├──► Motor controller  →  Drive motor
+  └──► Servo signal      →  Steering servo
+```
+
+<div align="center">
+
+<!-- Add photo of the physical car here -->
+
+| ![Car photo placeholder](assets/car_photo.jpg) | ![Arduino wiring placeholder](assets/arduino_wiring.jpg) |
+| :--------------------------------------------: | :------------------------------------------------------: |
+|      _RC car with colored tracking blobs_      |                     _Arduino wiring_                     |
+
+</div>
+
+> 📸 _Photos coming soon — replace `assets/car_photo.jpg` and `assets/arduino_wiring.jpg`
+> with real images and remove this note._
 
 ---
 
@@ -102,7 +206,7 @@ The RC car environment is implemented as a `DirectRLEnv` in Isaac Lab with:
 #### 1. Clone the repo
 
 ```bash
-git clone https://github.com/CPHughes23/tag_robotics.git
+git clone <your-github-url>
 cd tag_robotics
 ```
 
@@ -157,11 +261,9 @@ Accept the EULA when prompted. Then run once to complete first-time setup:
 isaacsim --accept-eula
 ```
 
-Wait for `Isaac Sim Full App is loaded.` (this may take a while) then exit with `Ctrl+C`.
+Wait for `Isaac Sim Full App is loaded.` then exit with `Ctrl+C`.
 
 #### 6. Link the Isaac Sim runtime extensions
-
-Isaac Sim installs its extensions via the VS Code snap. Link them into the conda env.
 
 > ⚠️ The `228` in the path below is a snap revision number — run `ls ~/snap/code/` to find yours if it differs.
 
@@ -231,7 +333,7 @@ IsaacLab/isaaclab.sh -p isaac_training/train.py --num_envs 4 --max_iterations 5
 #### 1. Clone the repo
 
 ```bash
-git clone https://github.com/CPHughes23/tag_robotics.git
+git clone <your-github-url>
 cd tag_robotics
 ```
 
@@ -309,8 +411,19 @@ tensorboard --logdir isaac_training/models/trained/
 
 ```bash
 IsaacLab/isaaclab.sh -p isaac_training/evaluate.py \
-    --checkpoint isaac_training/models/trained/<run>/<model>.pt \
+    --checkpoint isaac_training/models/trained/<run>/model_1000.pt \
     --num_envs 4
+```
+
+### Deploy to the laptop
+
+```bash
+# Copy checkpoint to laptop
+scp isaac_training/models/trained/<run>/model_1000.pt user@laptop:~/
+
+# Run on laptop
+source .venv/bin/activate
+python robot/<inference_script>.py --checkpoint ~/model_1000.pt
 ```
 
 ---
@@ -386,15 +499,21 @@ Then follow laptop setup from step 3.
 
 ---
 
+## Citation
+
+If you use this project in your research, please cite:
+
+```bibtex
+@misc{hughes2026rccar,
+  author = {Hughes, Casey and [Partner's Name]},
+  title  = {RC Car Autonomous Navigation via Reinforcement Learning},
+  year   = {2026},
+  url    = {https://github.com/<your-github-url>}
+}
+```
+
+---
+
 ## License
 
 This project is released under the [MIT License](LICENSE).
-
-## Citation
-
-@misc{hughes2026rccar,
-author = {Hughes, Casey and Teuttli, Sebastian},
-title = {RC Car Autonomous Navigation via Reinforcement Learning},
-year = {2026},
-url = {https://github.com/CPHughes23/tag_robotics.git}
-}
