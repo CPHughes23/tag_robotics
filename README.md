@@ -49,7 +49,7 @@ tag_robotics/
 ### 1. Clone the Repo
 
 ```bash
-git clone <your-github-url>
+git clone https://github.com/CPHughes23/tag_robotics.git
 cd tag_robotics
 ```
 
@@ -104,7 +104,7 @@ Accept the EULA when prompted. Then run once to complete the first-time setup:
 isaacsim --accept-eula
 ```
 
-Wait for "Isaac Sim Full App is loaded." then exit with Ctrl+C.
+Wait for "Isaac Sim Full App is loaded." (this may take a while) then exit with Ctrl+C.
 
 ### 6. Link the Isaac Sim Extensions
 
@@ -165,6 +165,14 @@ for shader compilation — this is normal):
 ```bash
 IsaacLab/isaaclab.sh -p isaac_training/visualize_car.py
 ```
+
+> If this is not working, try to open up a basic simulation:
+>
+> ```bash
+> IsaacLab/isaaclab.sh -p scripts/tutorials/00_sim/create_empty.py
+> ```
+>
+> Give it a few minutes but it should eventually let you move the camera around and you should be good after that
 
 Then do a quick training sanity check:
 
