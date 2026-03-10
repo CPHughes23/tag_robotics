@@ -184,49 +184,106 @@ If both complete without errors, setup is complete.
 
 ---
 
-## MacBook Setup (Robot)
+# Laptop / Robot Machine Setup
 
-### Requirements
+This setup is for the machine running detection, inference, and Arduino control.
+No Isaac Sim required. Works on any laptop regardless of OS.
 
-- macOS with Apple Silicon (M1/M2/M3)
+---
+
+## Requirements
+
 - Python 3.10+
-- No Isaac Sim needed
+- No CUDA needed
 
-### 1. Clone the Repo
+---
+
+## 1. Clone the Repo
 
 ```bash
 git clone <your-github-url>
 cd tag_robotics
 ```
 
-### 2. Create and Activate the venv
+## 2. Create and Activate a venv
+
+**macOS / Linux:**
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
 ```
 
-### 3. Install PyTorch (Apple Silicon MPS)
+**Windows:**
 
-MPS support is built into the standard PyTorch package on Apple Silicon:
+```bash
+python -m venv .venv
+.venv\Scripts\activate
+```
+
+## 3. Install PyTorch
+
+Pick the command that matches your hardware:
+
+**Apple Silicon (M1/M2/M3) — uses MPS GPU:**
 
 ```bash
 pip install torch
 ```
 
-### 4. Install Remaining Dependencies
+**Intel Mac or any laptop without a GPU — CPU only:**
+
+```bash
+pip install torch --index-url https://download.pytorch.org/whl/cpu
+```
+
+**Linux laptop with NVIDIA GPU:**
+
+```bash
+pip install torch --index-url https://download.pytorch.org/whl/cu128
+```
+
+**Windows with NVIDIA GPU:**
+
+```bash
+pip install torch --index-url https://download.pytorch.org/whl/cu128
+```
+
+## 4. Install Remaining Dependencies
 
 ```bash
 pip install -r robot/requirements.txt
 ```
 
-### 5. Verify MPS is Available
+## 5. Verify Your Setup
+
+Run this to confirm PyTorch is installed and check what hardware is available:
 
 ```bash
-python -c "import torch; print(torch.backends.mps.is_available())"
+python -c "
+import torch
+print('PyTorch version:', torch.__version__)
+print('CUDA available:', torch.cuda.is_available())
+print('MPS available:', torch.backends.mps.is_available())
+if torch.cuda.is_available():
+    print('Using: CUDA')
+elif torch.backends.mps.is_available():
+    print('Using: MPS (Apple Silicon)')
+else:
+    print('Using: CPU')
+"
 ```
 
-Should print `True`. If it prints `False`, make sure you are on macOS 12.3+.
+---
+
+## Notes
+
+- CPU inference is fine for this project — the policy network is small
+  ([128, 64, 32]) and runs fast even without a GPU
+- If you are on Apple Silicon, MPS will be used automatically by evaluate.py
+  since it detects available hardware at runtime
+- The robot/requirements.txt does not include Isaac Lab or Isaac Sim —
+  those are desktop-only dependencies
 
 ---
 
