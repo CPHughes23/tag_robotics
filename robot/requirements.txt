@@ -1,0 +1,16 @@
+# ── Install these manually BEFORE pip install -r requirements.txt ──
+# PyTorch (Apple Silicon MPS):
+#   pip install torch
+# ──────────────────────────────────────────────────────────────────
+
+# Core
+numpy==1.26.4
+packaging==26.0
+Pillow==11.3.0
+
+# Robot
+opencv-python==4.13.0.92
+pyserial
+
+# Visualization
+matplotlib==3.10.8
