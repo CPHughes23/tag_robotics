@@ -201,7 +201,7 @@ No Isaac Sim required. Works on any laptop regardless of OS.
 ## 1. Clone the Repo
 
 ```bash
-git clone <your-github-url>
+git clone https://github.com/CPHughes23/tag_robotics.git
 cd tag_robotics
 ```
 
@@ -334,7 +334,7 @@ Loads a checkpoint and runs the policy in Isaac Sim:
 
 ```bash
 IsaacLab/isaaclab.sh -p isaac_training/evaluate.py \
-    --checkpoint isaac_training/models/trained/<run>/model_1000.pt \
+    --checkpoint isaac_training/models/trained/<run>/<model>.pt \
     --num_envs 4
 ```
 
@@ -342,62 +342,3 @@ Optional arguments:
 
 - `--checkpoint` — path to `.pt` checkpoint file (required)
 - `--num_envs` — number of environments to visualize (default: 4)
-
----
-
-## Deploying to the MacBook
-
-Copy a trained checkpoint from the desktop to the MacBook:
-
-```bash
-scp isaac_training/models/trained/<run>/model_1000.pt user@macbook:~/
-```
-
-Then run inference on the MacBook:
-
-```bash
-source .venv/bin/activate
-python robot/<your_inference_script>.py --checkpoint ~/model_1000.pt
-```
-
-PyTorch automatically uses MPS on Apple Silicon. No Isaac Sim required.
-
----
-
-## Regenerating the Conda Environment from Scratch
-
-```bash
-conda deactivate
-conda env remove --name env_isaaclab
-conda create -n env_isaaclab python=3.11
-conda activate env_isaaclab
-```
-
-Then follow the desktop setup steps from step 5 onwards.
-Note: you will need to redo the symlink in step 6 as it lives inside the conda env.
-
-## Regenerating the MacBook venv from Scratch
-
-```bash
-deactivate
-rm -rf .venv
-python3 -m venv .venv
-source .venv/bin/activate
-```
-
-Then follow the MacBook setup steps from step 3 onwards.
-
----
-
-## Notes
-
-- `rc_car.usd` is not committed — generate it with `convert_urdf.py`
-- `models/trained/` is not committed — checkpoints can be large
-- The exts symlink lives inside the conda env and must be recreated
-  if the conda env is deleted and rebuilt
-- First run of any Isaac Sim script takes 10-20 minutes for shader
-  compilation — subsequent runs are fast
-- Desktop uses conda because Isaac Sim's Omniverse runtime requires it
-- MacBook uses a plain venv since it only needs lightweight inference
-  dependencies
-- Do not try to share one environment between machines
