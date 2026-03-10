@@ -3,3 +3,11 @@
 calib_images/
 camera_params.npz
 charuco_board.png
+
+# Trained model checkpoints
+isaac_training/models/
+
+# Isaac Sim generated files
+*.usd
+__pycache__/
+*.pyc 
