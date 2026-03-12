@@ -49,7 +49,7 @@ class RCCarEnvCfg(DirectRLEnvCfg):
         "rear_wheels": ImplicitActuatorCfg(
             joint_names_expr=["rear_left_wheel_joint", "rear_right_wheel_joint"],
             stiffness=0.0,
-            damping=0.05,
+            damping=2.0,
         ),
         "front_steering": ImplicitActuatorCfg(
             joint_names_expr=["front_left_steer_joint", "front_right_steer_joint"],
@@ -60,7 +60,7 @@ class RCCarEnvCfg(DirectRLEnvCfg):
 )
     
      # Fixed car parameters
-    drive_speed    = 5.0
+    drive_speed    = 37.5 # 1.5 m/s / 0.04m (wheel raduis)
     steering_angle = 0.5
 
     # Environment
