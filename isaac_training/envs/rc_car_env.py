@@ -43,7 +43,7 @@ class RCCarEnvCfg(DirectRLEnvCfg):
         ),
     ),
     init_state=ArticulationCfg.InitialStateCfg(
-        pos=(0.0, 0.0, 0.7),
+        pos=(0.0, 0.0, 0.07),
     ),
     actuators={
         "rear_wheels": ImplicitActuatorCfg(
@@ -60,7 +60,7 @@ class RCCarEnvCfg(DirectRLEnvCfg):
 )
     
      # Fixed car parameters
-    drive_speed    = 37.5 # 1.5 m/s / 0.04m (wheel raduis)
+    drive_speed    = -37.5 # 1.5 m/s / 0.04m (wheel raduis)
     steering_angle = 0.5
 
     # Environment
@@ -137,7 +137,10 @@ class RCCarEnv(DirectRLEnv):
         speed = self.cfg.drive_speed
         angle = self.cfg.steering_angle
 
-        action_idx = self.actions.long().squeeze(-1)
+        if self.actions.dim() == 2:
+            action_idx = self.actions.argmax(dim=1)
+        else:
+            action_idx = self.actions.long().squeeze(-1)
 
         # Rear wheel velocity: positive = forward, negative = backward
         drive = torch.zeros(self.num_envs, device=self.device)
