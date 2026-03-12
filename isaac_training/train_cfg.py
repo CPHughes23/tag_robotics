@@ -20,8 +20,7 @@ train_cfg_dict = {
         "hidden_dims": [128, 64, 32],
         "activation": "elu",
         "distribution_cfg": {
-            "class_name": "GaussianDistribution",
-            "init_std": 0.3,
+            "class_name": "distributions:CategoricalDistribution",
         },
     },
     "critic": {
