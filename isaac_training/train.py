@@ -48,8 +48,7 @@ def main():
             "hidden_dims": [128, 64, 32],
             "activation": "elu",
             "distribution_cfg": {
-                "class_name": "GaussianDistribution",
-                "init_std": 1.0,
+                "class_name": "CategoricalDistribution",
             },
         },
         "critic": {

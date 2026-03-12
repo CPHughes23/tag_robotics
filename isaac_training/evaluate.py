@@ -33,8 +33,7 @@ train_cfg_dict = {
         "hidden_dims": [128, 64, 32],
         "activation": "elu",
         "distribution_cfg": {
-            "class_name": "GaussianDistribution",
-            "init_std": 1.0,
+            "class_name": "CategoricalDistribution",
         },
     },
     "critic": {
@@ -75,8 +74,7 @@ def main():
         # Reconstruct the actor from saved state
         runner = OnPolicyRunner(wrapped_env, train_cfg_dict, log_dir=None, device="cuda:0")
         runner.load(args_cli.checkpoint)
-        policy = runner.alg.actor
-        policy.eval()
+        policy = runner.get_inference_policy(device="cuda:0")
 
         print("Running evaluation. Watch the Isaac Sim viewport.")
         print("Press Ctrl+C to stop.")
@@ -84,7 +82,7 @@ def main():
         with torch.inference_mode():
             while simulation_app.is_running():
                 obs = wrapped_env.get_observations().to("cuda:0")
-                actions = runner.alg.act(obs)
+                actions = policy(obs)
                 wrapped_env.step(actions)
     except Exception as e:
         print(f"ERROR: {e}")
