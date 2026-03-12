@@ -43,7 +43,7 @@ class RCCarEnvCfg(DirectRLEnvCfg):
         ),
     ),
     init_state=ArticulationCfg.InitialStateCfg(
-        pos=(0.0, 0.0, 0.1),
+        pos=(0.0, 0.0, 0.7),
     ),
     actuators={
         "rear_wheels": ImplicitActuatorCfg(
@@ -94,7 +94,7 @@ class RCCarEnv(DirectRLEnv):
             env_ids = torch.arange(self.num_envs, device=self.device)
         # Random x, y between -1 and 1
         random_offset = (torch.rand(len(env_ids), 2, device=self.device) - 0.5) * 2.0
-        self.target_pos[env_ids] = self.scene.env_origins[env_ids, :2] + random_offset
+        self.target_pos[env_ids] = self.scene.env_origins[env_ids, :2] + random_offset *0.5
 
     def _setup_scene(self):
         self.robot = Articulation(self.cfg.robot)
@@ -200,14 +200,14 @@ class RCCarEnv(DirectRLEnv):
         distance = torch.norm(self.target_pos - robot_pos, dim=1)
 
         # Reward for being close to the target
-        reward = 1.0 / (1.0 + distance)
+        reward = torch.exp(-distance * 2.0)
 
         # Bonus for reaching the target
         reached = distance < 0.3
         reward[reached] += 10.0
 
         # Small penalty each step to encourage speed
-        reward -= 0.01
+        reward -= 0.05
 
         return reward
 
