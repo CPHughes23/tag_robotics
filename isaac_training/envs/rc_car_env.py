@@ -93,7 +93,8 @@ class RCCarEnv(DirectRLEnv):
         if env_ids is None:
             env_ids = torch.arange(self.num_envs, device=self.device)
         # Random x, y between -1 and 1
-        self.target_pos[env_ids] = (torch.rand(len(env_ids), 2, device=self.device) - 0.5) * 2.0
+        random_offset = (torch.rand(len(env_ids), 2, device=self.device) - 0.5) * 2.0
+        self.target_pos[env_ids] = self.scene.env_origins[env_ids, :2] + random_offset
 
     def _setup_scene(self):
         self.robot = Articulation(self.cfg.robot)
