@@ -137,10 +137,7 @@ class RCCarEnv(DirectRLEnv):
         speed = self.cfg.drive_speed
         angle = self.cfg.steering_angle
 
-        if self.actions.dim() == 2:
-            action_idx = self.actions.argmax(dim=1)
-        else:
-            action_idx = self.actions.long().squeeze(-1)
+        action_idx = self.actions.long().squeeze(-1)
 
         # Rear wheel velocity: positive = forward, negative = backward
         drive = torch.zeros(self.num_envs, device=self.device)
@@ -220,7 +217,10 @@ class RCCarEnv(DirectRLEnv):
 
         # Done if reached target or fell out of bounds
         reached = distance < 0.3
-        out_of_bounds = torch.norm(robot_pos, dim=1) > 10.0
+
+        env_origins_2d = self.scene.env_origins[:, :2]
+        dist_from_origin = torch.norm(robot_pos - env_origins_2d, dim=1)
+        out_of_bounds = dist_from_origin > 2.0
 
         terminated = reached | out_of_bounds
         truncated = self.episode_length_buf >= self.max_episode_length
