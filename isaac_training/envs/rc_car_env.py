@@ -99,7 +99,17 @@ class RCCarEnv(DirectRLEnv):
     def _setup_scene(self):
         self.robot = Articulation(self.cfg.robot)
 
-        spawn_ground_plane(prim_path="/World/ground", cfg=GroundPlaneCfg())
+        # Adds friction to ground
+        spawn_ground_plane(
+            prim_path="/World/ground",
+            cfg=GroundPlaneCfg(
+                physics_material=sim_utils.RigidBodyMaterialCfg(
+                    static_friction=1.0,
+                    dynamic_friction=1.0,
+                    restitution=0.0,
+                )
+            )
+        )
         
         self.scene.clone_environments(copy_from_source=False) # clones the robot to all env while keeping them independent
         if self.device == "cpu":
