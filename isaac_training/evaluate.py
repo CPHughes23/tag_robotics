@@ -15,51 +15,7 @@ from rsl_rl.models import MLPModel
 from rsl_rl.runners import OnPolicyRunner
 from isaaclab_rl.rsl_rl import RslRlVecEnvWrapper # type: ignore
 from envs.rc_car_env import RCCarEnv, RCCarEnvCfg
-
-train_cfg_dict = {
-    "seed": 42,
-    "device": "cuda:0",
-    "num_steps_per_env": 24,
-    "max_iterations": 1000,
-    "save_interval": 100,
-    "experiment_name": "rc_car",
-    "empirical_normalization": False,
-    "obs_groups": {
-        "actor": ["policy"],
-        "critic": ["policy"],
-    },
-    "actor": {
-        "class_name": "MLPModel",
-        "hidden_dims": [128, 64, 32],
-        "activation": "elu",
-        "distribution_cfg": {
-            "class_name": "GaussianDistribution",
-            "init_std": 1.0,
-        },
-    },
-    "critic": {
-        "class_name": "MLPModel",
-        "hidden_dims": [128, 64, 32],
-        "activation": "elu",
-    },
-    "algorithm": {
-        "class_name": "PPO",
-        "value_loss_coef": 1.0,
-        "use_clipped_value_loss": True,
-        "clip_param": 0.2,
-        "entropy_coef": 0.005,
-        "num_learning_epochs": 5,
-        "num_mini_batches": 4,
-        "learning_rate": 1.0e-3,
-        "schedule": "adaptive",
-        "gamma": 0.99,
-        "lam": 0.95,
-        "desired_kl": 0.01,
-        "max_grad_norm": 1.0,
-        "rnd_cfg": None,
-        "symmetry_cfg": None,
-    },
-}
+from train_cfg import train_cfg_dict
 
 def main():
     try:

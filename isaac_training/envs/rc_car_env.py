@@ -137,7 +137,7 @@ class RCCarEnv(DirectRLEnv):
         speed = self.cfg.drive_speed
         angle = self.cfg.steering_angle
 
-        action_idx = self.actions.argmax(dim=1)
+        action_idx = self.actions.long().squeeze(-1)
 
         # Rear wheel velocity: positive = forward, negative = backward
         drive = torch.zeros(self.num_envs, device=self.device)
