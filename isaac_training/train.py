@@ -50,6 +50,7 @@ def main():
     runner.learn(num_learning_iterations=args_cli.max_iterations)
 
     env.close()
+    print("Models can be found at:", log_dir)
 
 main()
 simulation_app.close()

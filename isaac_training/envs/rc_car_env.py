@@ -13,6 +13,7 @@ from isaaclab.sim.spawners.from_files import GroundPlaneCfg, spawn_ground_plane 
 from isaaclab.utils import configclass   # type: ignore
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
+_SUCCESS_RANGE = 0.5
 
 @configclass
 class RCCarEnvCfg(DirectRLEnvCfg):
@@ -22,7 +23,7 @@ class RCCarEnvCfg(DirectRLEnvCfg):
     # Scene
     scene: InteractiveSceneCfg = InteractiveSceneCfg(
         num_envs=64,       # run 64 parallel environments during training
-        env_spacing=4.0,   # space them 4 meters apart
+        env_spacing=12.0,   # space them 4 meters apart
         replicate_physics=True,
         clone_in_fabric=True,
     )
@@ -49,11 +50,16 @@ class RCCarEnvCfg(DirectRLEnvCfg):
         "rear_wheels": ImplicitActuatorCfg(
             joint_names_expr=["rear_left_wheel_joint", "rear_right_wheel_joint"],
             stiffness=0.0,
-            damping=2.0
+            damping=2.0,
         ),
         "front_steering": ImplicitActuatorCfg(
             joint_names_expr=["front_left_steer_joint", "front_right_steer_joint"],
-            stiffness=10.0,
+            stiffness=100.0,
+            damping=10.0,
+        ),
+        "front_wheels": ImplicitActuatorCfg(
+            joint_names_expr=["front_left_wheel_joint", "front_right_wheel_joint"],
+            stiffness=0.0,
             damping=0.1,
         ),
     },
@@ -66,7 +72,7 @@ class RCCarEnvCfg(DirectRLEnvCfg):
     # Environment
     decimation        = 8           # how often the agent makes a decision, in this case 100Hz / 2
     episode_length_s  = 30.0
-    action_space      = 6           # see apply_action
+    action_space      = 2           # see apply_action
     observation_space = 4           # heading + target x, y, distance
     state_space       = 0           # not relevant but needed
 
@@ -107,9 +113,10 @@ class RCCarEnv(DirectRLEnv):
             env_ids = torch.arange(self.num_envs, device=self.device)
         # Random x, y between -1 and 1
         random_offset = (torch.rand(len(env_ids), 2, device=self.device) - 0.5) * 2.0
-        self.target_pos[env_ids] = self.scene.env_origins[env_ids, :2] + random_offset *0.5
+        self.target_pos[env_ids] = self.scene.env_origins[env_ids, :2] + random_offset * 2.0
 
     def _setup_scene(self):
+        import omni.usd # type: ignore
         self.robot = Articulation(self.cfg.robot)
 
         # Adds friction to ground
@@ -141,8 +148,7 @@ class RCCarEnv(DirectRLEnv):
         wheel_material_cfg.func("/World/Physics/WheelMaterial", wheel_material_cfg)
 
         # Bind material to all wheel prims
-        import omni.usd
-        from pxr import UsdShade
+        from pxr import UsdShade #type: ignore
         stage = omni.usd.get_context().get_stage()
         material = UsdShade.Material(stage.GetPrimAtPath("/World/Physics/WheelMaterial"))
         for i in range(self.num_envs):
@@ -156,46 +162,19 @@ class RCCarEnv(DirectRLEnv):
                     )
 
     def _pre_physics_step(self, actions: torch.Tensor):
-        """Convert discrete actions to wheel velocities."""
-        # actions = torch.floor(torch.clamp((actions * 3) + 3, 0, 5.9999)) # Scale continuous (-1,1) to discrete (0,5)
+        actions[:, 0] = torch.clamp(actions[:, 0], -1, 1)
+        actions[:, 1] = torch.clamp(actions[:, 1], -0.5, 0.5)
         self.actions = actions.clone()
 
     def _apply_action(self):
         """
-        Actions:
-        0 = forward
-        1 = forward + left
-        2 = forward + right
-        3 = backward
-        4 = backward + left
-        5 = backward + right
+        Actions
+        first column: forward/backward velocity
+        second column: steering angle
         """
-        speed = self.cfg.drive_speed
-        angle = self.cfg.steering_angle
 
-        action_idx = self.actions.long().squeeze(-1)
-        # action_idx = torch.ones(self.num_envs, device=self.device).long() * 2
-
-        # for i in range(6):
-        #     count = (action_idx == i).sum().item()
-        #     print(f"action {i}: {count}")
-        # print(action_idx[:4])
-
-        # Rear wheel velocity: positive = forward, negative = backward
-        drive = torch.zeros(self.num_envs, device=self.device)
-        drive[action_idx == 0] =  speed
-        drive[action_idx == 1] =  speed
-        drive[action_idx == 2] =  speed
-        drive[action_idx == 3] = -speed
-        drive[action_idx == 4] = -speed
-        drive[action_idx == 5] = -speed
-
-        # Front wheel steering angle: positive = left, negative = right
-        steer = torch.zeros(self.num_envs, device=self.device)
-        steer[action_idx == 1] =  angle
-        steer[action_idx == 2] = -angle
-        steer[action_idx == 4] =  angle
-        steer[action_idx == 5] = -angle
+        drive = self.actions[:, 0] * 37.5
+        steer = self.actions[:, 1]
 
         # Both rear wheels get the same speed
         rear_drive = drive.unsqueeze(1).repeat(1, 2)
@@ -210,11 +189,10 @@ class RCCarEnv(DirectRLEnv):
             front_steer,
             joint_ids=self._front_steer_ids
         )
-        # print(self.robot.data.joint_pos[:1])
 
     def _update_target_markers(self):
-        import omni.usd
-        from pxr import Gf
+        import omni.usd # type: ignore
+        from pxr import Gf  # type: ignore
         stage = omni.usd.get_context().get_stage()
 
         if not self._markers_initialized:
@@ -278,11 +256,17 @@ class RCCarEnv(DirectRLEnv):
         reward = torch.exp(-distance * 2.0) + distance_change * 2.0
 
         # Bonus for reaching the target
-        reached = distance < 0.5
+        reached = distance < _SUCCESS_RANGE
         reward[reached] += 10.0
 
-        # Small penalty each step to encourage speed
-        reward -= 0.01
+        # Add per step penalty
+        reward -= 0.5
+
+        env_origins_2d = self.scene.env_origins[:, :2]
+        dist_from_origin = torch.norm(robot_pos - env_origins_2d, dim=1)
+        out_of_bounds = dist_from_origin > 4.0
+        out_of_bounds_penalty = out_of_bounds.float() * 250.0
+        reward -= out_of_bounds_penalty
 
         self.prev_distance = distance.clone()
 
@@ -293,11 +277,11 @@ class RCCarEnv(DirectRLEnv):
         distance = torch.norm(self.target_pos - robot_pos, dim=1)
 
         # Done if reached target or fell out of bounds
-        reached = distance < 0.3
+        reached = distance < _SUCCESS_RANGE
 
         env_origins_2d = self.scene.env_origins[:, :2]
         dist_from_origin = torch.norm(robot_pos - env_origins_2d, dim=1)
-        out_of_bounds = dist_from_origin > 2.0
+        out_of_bounds = dist_from_origin > 4.0
 
         terminated = reached | out_of_bounds
         truncated = self.episode_length_buf >= self.max_episode_length

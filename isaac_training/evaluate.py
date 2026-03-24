@@ -24,7 +24,7 @@ def main():
         env = RCCarEnv(cfg=env_cfg, render_mode="human")
         wrapped_env = RslRlVecEnvWrapper(env)
 
-        import omni.usd
+        import omni.usd #type: ignore
         stage = omni.usd.get_context().get_stage()
         for prim in stage.Traverse():
             if "Robot" in prim.GetPath().pathString:
