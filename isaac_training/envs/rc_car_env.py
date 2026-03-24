@@ -34,12 +34,12 @@ class RCCarEnvCfg(DirectRLEnvCfg):
         usd_path=os.path.join(_HERE, "../rc_car.usd"),
         rigid_props=sim_utils.RigidBodyPropertiesCfg(
             disable_gravity=False,
-            max_depenetration_velocity=10.0,
+            max_depenetration_velocity=1.0,
         ),
         articulation_props=sim_utils.ArticulationRootPropertiesCfg(
             enabled_self_collisions=False,
             solver_position_iteration_count=4,
-            solver_velocity_iteration_count=0,
+            solver_velocity_iteration_count=1,
         ),
     ),
     init_state=ArticulationCfg.InitialStateCfg(
@@ -49,7 +49,7 @@ class RCCarEnvCfg(DirectRLEnvCfg):
         "rear_wheels": ImplicitActuatorCfg(
             joint_names_expr=["rear_left_wheel_joint", "rear_right_wheel_joint"],
             stiffness=0.0,
-            damping=2.0,
+            damping=2.0
         ),
         "front_steering": ImplicitActuatorCfg(
             joint_names_expr=["front_left_steer_joint", "front_right_steer_joint"],
@@ -64,11 +64,20 @@ class RCCarEnvCfg(DirectRLEnvCfg):
     steering_angle = 0.5
 
     # Environment
-    decimation        = 2           # how often the agent makes a decision, in this case 100Hz / 2
+    decimation        = 8           # how often the agent makes a decision, in this case 100Hz / 2
     episode_length_s  = 30.0
     action_space      = 6           # see apply_action
-    observation_space = 6           # x, y, heading + target x, y, distance
+    observation_space = 4           # heading + target x, y, distance
     state_space       = 0           # not relevant but needed
+
+@configclass
+class RCCarEvalEnvCfg(RCCarEnvCfg):
+    scene: InteractiveSceneCfg = InteractiveSceneCfg(
+        num_envs=4,       # run 64 parallel environments during training
+        env_spacing=4.0,   # space them 4 meters apart
+        replicate_physics=False,
+        clone_in_fabric=False,
+    )
 
 class RCCarEnv(DirectRLEnv):
     cfg: RCCarEnvCfg
@@ -87,6 +96,10 @@ class RCCarEnv(DirectRLEnv):
         # Target position for each environment
         self.target_pos = torch.zeros(self.num_envs, 2, device=self.device) # we use 2 because we are finding (x,y) for each env
         self._randomize_targets()
+        self._markers_initialized = False
+
+        # Place to store the previous distance to use for the reward function
+        self.prev_distance = torch.zeros(self.num_envs, device=self.device)
 
     def _randomize_targets(self, env_ids=None):
         """Place targets at random positions within 1 meter."""
@@ -118,10 +131,33 @@ class RCCarEnv(DirectRLEnv):
         
         light_cfg = sim_utils.DomeLightCfg(intensity=2000.0, color=(0.75, 0.75, 0.75))
         light_cfg.func("/World/Light", light_cfg)
-        
 
-    def _pre_physics_step(self, actions: torch.Tensor): # honestly I have no idea what this does
+        # Spawn material at its own path
+        wheel_material_cfg = sim_utils.RigidBodyMaterialCfg(
+            static_friction=1.5,
+            dynamic_friction=1.5,
+            restitution=0.0,
+        )
+        wheel_material_cfg.func("/World/Physics/WheelMaterial", wheel_material_cfg)
+
+        # Bind material to all wheel prims
+        import omni.usd
+        from pxr import UsdShade
+        stage = omni.usd.get_context().get_stage()
+        material = UsdShade.Material(stage.GetPrimAtPath("/World/Physics/WheelMaterial"))
+        for i in range(self.num_envs):
+            for wheel in ["rear_left_wheel", "rear_right_wheel", "front_left_wheel", "front_right_wheel"]:
+                prim = stage.GetPrimAtPath(f"/World/envs/env_{i}/Robot/{wheel}")
+                if prim.IsValid():
+                    UsdShade.MaterialBindingAPI(prim).Bind(
+                        material,
+                        UsdShade.Tokens.strongerThanDescendants,
+                        "physics"
+                    )
+
+    def _pre_physics_step(self, actions: torch.Tensor):
         """Convert discrete actions to wheel velocities."""
+        # actions = torch.floor(torch.clamp((actions * 3) + 3, 0, 5.9999)) # Scale continuous (-1,1) to discrete (0,5)
         self.actions = actions.clone()
 
     def _apply_action(self):
@@ -138,6 +174,12 @@ class RCCarEnv(DirectRLEnv):
         angle = self.cfg.steering_angle
 
         action_idx = self.actions.long().squeeze(-1)
+        # action_idx = torch.ones(self.num_envs, device=self.device).long() * 2
+
+        # for i in range(6):
+        #     count = (action_idx == i).sum().item()
+        #     print(f"action {i}: {count}")
+        # print(action_idx[:4])
 
         # Rear wheel velocity: positive = forward, negative = backward
         drive = torch.zeros(self.num_envs, device=self.device)
@@ -168,6 +210,35 @@ class RCCarEnv(DirectRLEnv):
             front_steer,
             joint_ids=self._front_steer_ids
         )
+        # print(self.robot.data.joint_pos[:1])
+
+    def _update_target_markers(self):
+        import omni.usd
+        from pxr import Gf
+        stage = omni.usd.get_context().get_stage()
+
+        if not self._markers_initialized:
+            marker_cfg = sim_utils.SphereCfg(
+                radius=0.1,
+                visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(1.0, 0.0, 0.0)),
+            )
+            for i in range(self.num_envs):
+                path = f"/World/envs/env_{i}/Target"
+                if not stage.GetPrimAtPath(path).IsValid():
+                    marker_cfg.func(path, marker_cfg)
+            self._markers_initialized = True
+
+        # Update positions every call
+        for i in range(self.num_envs):
+            prim = stage.GetPrimAtPath(f"/World/envs/env_{i}/Target")
+            if prim.IsValid():
+                xform = prim.GetAttribute("xformOp:translate")
+                if xform:
+                    xform.Set(Gf.Vec3d(
+                        float(self.target_pos[i, 0]),
+                        float(self.target_pos[i, 1]),
+                        0.1
+                    ))
 
     def _get_observations(self) -> dict:
         # Robot position and heading
@@ -188,7 +259,11 @@ class RCCarEnv(DirectRLEnv):
 
         distance = torch.norm(to_target, dim=1, keepdim=True)   # shape (64, 1)
 
-        obs = torch.cat([robot_pos, robot_heading, local_to_target, distance], dim=1)
+        obs = torch.cat([robot_heading, local_to_target, distance], dim=1)
+        
+        if self.render_mode is not None:
+            self._update_target_markers()
+
         return {"policy": obs}
     
     # Some library requires a public get_observations idk
@@ -199,15 +274,17 @@ class RCCarEnv(DirectRLEnv):
         robot_pos = self.robot.data.root_pos_w[:, :2]
         distance = torch.norm(self.target_pos - robot_pos, dim=1)
 
-        # Reward for being close to the target
-        reward = torch.exp(-distance * 2.0)
+        distance_change = self.prev_distance - distance
+        reward = torch.exp(-distance * 2.0) + distance_change * 2.0
 
         # Bonus for reaching the target
-        reached = distance < 0.3
+        reached = distance < 0.5
         reward[reached] += 10.0
 
         # Small penalty each step to encourage speed
-        reward -= 0.05
+        reward -= 0.01
+
+        self.prev_distance = distance.clone()
 
         return reward
 
@@ -233,10 +310,13 @@ class RCCarEnv(DirectRLEnv):
         super()._reset_idx(env_ids)
 
         # Reset robot to default state with correct env origins
-        default_root_state = self.robot.data.default_root_state[env_ids]    # getting robots default pose
+        default_root_state = self.robot.data.default_root_state[env_ids].clone()    # getting robots default pose
         default_root_state[:, :3] += self.scene.env_origins[env_ids]        # adjusting pose for each environment
 
         self.robot.write_root_pose_to_sim(default_root_state[:, :7], env_ids)
         self.robot.write_root_velocity_to_sim(default_root_state[:, 7:], env_ids)
 
         self._randomize_targets(env_ids)
+
+        robot_pos = default_root_state[:, :2]
+        self.prev_distance[env_ids] = torch.norm(self.target_pos[env_ids] - robot_pos, dim=1)

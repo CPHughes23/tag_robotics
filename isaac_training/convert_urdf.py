@@ -19,7 +19,7 @@ cfg = UrdfConverterCfg(
     joint_drive=UrdfConverterCfg.JointDriveCfg(
         target_type="velocity",
         gains=UrdfConverterCfg.JointDriveCfg.PDGainsCfg(
-            stiffness=0.0,
+            stiffness=100.0,
             damping=0.05,
         ),
     ),

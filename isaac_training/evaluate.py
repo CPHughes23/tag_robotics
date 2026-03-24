@@ -14,15 +14,21 @@ import traceback
 from rsl_rl.models import MLPModel
 from rsl_rl.runners import OnPolicyRunner
 from isaaclab_rl.rsl_rl import RslRlVecEnvWrapper # type: ignore
-from envs.rc_car_env import RCCarEnv, RCCarEnvCfg
+from envs.rc_car_env import RCCarEnv, RCCarEvalEnvCfg
 from train_cfg import train_cfg_dict
 
 def main():
     try:
-        env_cfg = RCCarEnvCfg()
+        env_cfg = RCCarEvalEnvCfg()
         env_cfg.scene.num_envs = args_cli.num_envs
-        env = RCCarEnv(cfg=env_cfg)
+        env = RCCarEnv(cfg=env_cfg, render_mode="human")
         wrapped_env = RslRlVecEnvWrapper(env)
+
+        import omni.usd
+        stage = omni.usd.get_context().get_stage()
+        for prim in stage.Traverse():
+            if "Robot" in prim.GetPath().pathString:
+                print(prim.GetPath())
 
         # Load checkpoint
         checkpoint = torch.load(args_cli.checkpoint, map_location="cuda:0")
@@ -40,6 +46,7 @@ def main():
         with torch.inference_mode():
             while simulation_app.is_running():
                 obs = wrapped_env.get_observations().to("cuda:0")
+                # print(obs["policy"][:4])
                 actions = runner.alg.act(obs)
                 wrapped_env.step(actions)
     except Exception as e:

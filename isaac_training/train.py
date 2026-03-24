@@ -45,6 +45,7 @@ def main():
     print(f"\nStarting training with {args_cli.num_envs} parallel environments")
     print(f"Models will be saved to: {log_dir}")
     print(f"To monitor training, run: tensorboard --logdir {log_dir}\n")
+    # print(env.render_mode)
 
     runner.learn(num_learning_iterations=args_cli.max_iterations)
 
