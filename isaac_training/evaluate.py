@@ -14,12 +14,12 @@ import traceback
 from rsl_rl.models import MLPModel
 from rsl_rl.runners import OnPolicyRunner
 from isaaclab_rl.rsl_rl import RslRlVecEnvWrapper # type: ignore
-from envs.rc_car_env import RCCarEnv, RCCarEvalEnvCfg
+from envs.rc_car_env import RCCarEnv, RCCarEnvCfg
 from train_cfg import train_cfg_dict
 
 def main():
     try:
-        env_cfg = RCCarEvalEnvCfg()
+        env_cfg = RCCarEnvCfg()
         env_cfg.scene.num_envs = args_cli.num_envs
         env = RCCarEnv(cfg=env_cfg, render_mode="human")
         wrapped_env = RslRlVecEnvWrapper(env)

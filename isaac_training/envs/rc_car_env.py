@@ -76,15 +76,6 @@ class RCCarEnvCfg(DirectRLEnvCfg):
     observation_space = 4           # heading + target x, y, distance
     state_space       = 0           # not relevant but needed
 
-@configclass
-class RCCarEvalEnvCfg(RCCarEnvCfg):
-    scene: InteractiveSceneCfg = InteractiveSceneCfg(
-        num_envs=4,       # run 64 parallel environments during training
-        env_spacing=4.0,   # space them 4 meters apart
-        replicate_physics=False,
-        clone_in_fabric=False,
-    )
-
 class RCCarEnv(DirectRLEnv):
     cfg: RCCarEnvCfg
 
