@@ -85,6 +85,15 @@ class RCCarEnvCfg(DirectRLEnvCfg):
     out_of_bounds_penalty = 250.0
     step_penalty = 0.5
 
+@configclass
+class RCCarEvalEnvCfg(RCCarEnvCfg):
+    scene: InteractiveSceneCfg = InteractiveSceneCfg(
+        num_envs=4,       # run 64 parallel environments during training
+        env_spacing=4.0,   # space them 4 meters apart
+        replicate_physics=False,
+        clone_in_fabric=False,
+    )
+
 class RCCarEnv(DirectRLEnv):
     cfg: RCCarEnvCfg
 
