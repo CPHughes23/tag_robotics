@@ -3,7 +3,7 @@ from isaaclab.app import AppLauncher # type: ignore
 
 parser = argparse.ArgumentParser(description="Evaluate trained RC car policy")
 parser.add_argument("--checkpoint", type=str, required=True, help="Path to the .pt checkpoint file")
-parser.add_argument("--num_envs", type=int, default=4, help="Number of environments to visualize")
+parser.add_argument("--num_envs", type=int, default=1, help="Number of environments to visualize")
 AppLauncher.add_app_launcher_args(parser)
 args_cli = parser.parse_args()
 app_launcher = AppLauncher(args_cli)
