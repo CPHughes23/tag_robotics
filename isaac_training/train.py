@@ -5,6 +5,7 @@ from isaaclab.app import AppLauncher # type: ignore
 parser = argparse.ArgumentParser(description="Train RC car to navigate to target")
 parser.add_argument("--num_envs", type=int, default=64, help="Number of parallel environments")
 parser.add_argument("--max_iterations", type=int, default=1000, help="Maximum training iterations")
+parser.add_argument("--checkpoint", type=str, required=True, help="Path to the .pt checkpoint file")
 AppLauncher.add_app_launcher_args(parser)
 args_cli = parser.parse_args()
 args_cli.headless = True  # run without GUI during training
@@ -41,6 +42,10 @@ def main():
 
     # Create the PPO runner and start training
     runner = OnPolicyRunner(wrapped_env, train_cfg_dict, log_dir=log_dir, device="cuda:0")
+
+    if args_cli.checkpoint is not None:
+        runner.load(args_cli.checkpoint)
+        print(f"Resuming from checkpoint: {args_cli.checkpoint}")
 
     print(f"\nStarting training with {args_cli.num_envs} parallel environments")
     print(f"Models will be saved to: {log_dir}")
