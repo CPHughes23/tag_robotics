@@ -13,22 +13,21 @@ from isaaclab.sim.spawners.from_files import GroundPlaneCfg, spawn_ground_plane 
 from isaaclab.utils import configclass   # type: ignore
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
-_SUCCESS_RANGE = 0.5
 
 @configclass
 class RCCarEnvCfg(DirectRLEnvCfg):
-    # Simulation
+    """
+    Config class to set up the environments including Scenes and Robots
+    """
     sim: SimulationCfg = SimulationCfg(dt=0.01, render_interval=2)
 
-    # Scene
     scene: InteractiveSceneCfg = InteractiveSceneCfg(
-        num_envs=64,       # run 64 parallel environments during training
-        env_spacing=12.0,   # space them 4 meters apart
+        num_envs=64,        # run 64 parallel environments during training
+        env_spacing=12.0,   # space them 12 meters apart
         replicate_physics=True,
         clone_in_fabric=True,
     )
 
-    # Robot
     robot: ArticulationCfg = ArticulationCfg(
     prim_path="/World/envs/env_.*/Robot",
     spawn=sim_utils.UsdFileCfg(
@@ -65,16 +64,26 @@ class RCCarEnvCfg(DirectRLEnvCfg):
     },
 )
     
-     # Fixed car parameters
-    drive_speed    = -37.5 # 1.5 m/s / 0.04m (wheel raduis)
+    # Fixed car parameters
+    drive_speed    = 37.5 # 1.5 m/s / 0.04m (wheel raduis)
     steering_angle = 0.5
 
     # Environment
     decimation        = 8           # how often the agent makes a decision, in this case 100Hz / 2
     episode_length_s  = 30.0
-    action_space      = 2           # see apply_action
-    observation_space = 4           # heading + target x, y, distance
+    action_space      = 2           # drive velocity + steer angle
+    observation_space = 4           # heading + target x and y + distance
     state_space       = 0           # not relevant but needed
+
+    # Environment Boundaries
+    out_of_bounds_distance = 4.0
+    target_spawn_range = 2.0
+
+    # Reward parameters
+    reach_threshold = 0.5
+    reach_bonus = 10.0
+    out_of_bounds_penalty = 250.0
+    step_penalty = 0.5
 
 class RCCarEnv(DirectRLEnv):
     cfg: RCCarEnvCfg
@@ -91,20 +100,20 @@ class RCCarEnv(DirectRLEnv):
         )
 
         # Target position for each environment
-        self.target_pos = torch.zeros(self.num_envs, 2, device=self.device) # we use 2 because we are finding (x,y) for each env
+        self.target_pos = torch.zeros(self.num_envs, 2, device=self.device) # We use 2 because we are finding (x,y) for each env
         self._randomize_targets()
-        self._markers_initialized = False
+        self._markers_initialized = False # This ensures we only create the markers once
 
         # Place to store the previous distance to use for the reward function
         self.prev_distance = torch.zeros(self.num_envs, device=self.device)
 
     def _randomize_targets(self, env_ids=None):
-        """Place targets at random positions within 1 meter."""
+        """Place targets at random positions within 4 meters."""
         if env_ids is None:
             env_ids = torch.arange(self.num_envs, device=self.device)
-        # Random x, y between -1 and 1
+
         random_offset = (torch.rand(len(env_ids), 2, device=self.device) - 0.5) * 2.0
-        self.target_pos[env_ids] = self.scene.env_origins[env_ids, :2] + random_offset * 2.0
+        self.target_pos[env_ids] = self.scene.env_origins[env_ids, :2] + random_offset * self.cfg.target_spawn_range
 
     def _setup_scene(self):
         import omni.usd # type: ignore
@@ -153,8 +162,14 @@ class RCCarEnv(DirectRLEnv):
                     )
 
     def _pre_physics_step(self, actions: torch.Tensor):
+        """
+        Clamps forward/backward to [-1,1]
+        Clamps steering angle to [-0.5, 0.5]
+        """
+
+        steer_angle = self.cfg.steering_angle
         actions[:, 0] = torch.clamp(actions[:, 0], -1, 1)
-        actions[:, 1] = torch.clamp(actions[:, 1], -0.5, 0.5)
+        actions[:, 1] = torch.clamp(actions[:, 1], -steer_angle, steer_angle)
         self.actions = actions.clone()
 
     def _apply_action(self):
@@ -164,11 +179,11 @@ class RCCarEnv(DirectRLEnv):
         second column: steering angle
         """
 
-        drive = self.actions[:, 0] * 37.5
+        drive = self.actions[:, 0] * self.cfg.drive_speed
         steer = self.actions[:, 1]
 
         # Both rear wheels get the same speed
-        rear_drive = drive.unsqueeze(1).repeat(1, 2)
+        rear_drive  = drive.unsqueeze(1).repeat(1, 2)
         # Both front wheels get the same steering angle
         front_steer = steer.unsqueeze(1).repeat(1, 2)
 
@@ -211,11 +226,11 @@ class RCCarEnv(DirectRLEnv):
 
     def _get_observations(self) -> dict:
         # Robot position and heading
-        robot_pos = self.robot.data.root_pos_w[:, :2]           # shape (64, 2) - x, y
+        robot_pos = self.robot.data.root_pos_w[:, :2]         # shape (64, 2):  x, y
         quat = self.robot.data.root_quat_w
         siny = 2.0 * (quat[:, 0] * quat[:, 3] + quat[:, 1] * quat[:, 2])
         cosy = 1.0 - 2.0 * (quat[:, 2] ** 2 + quat[:, 3] ** 2)
-        robot_heading = torch.atan2(siny, cosy).unsqueeze(1)  # shape (64, 1) yaw
+        robot_heading = torch.atan2(siny, cosy).unsqueeze(1)  # shape (64, 1):  yaw
 
         # Vector to target
         sin_yaw = torch.sin(robot_heading)
@@ -235,7 +250,7 @@ class RCCarEnv(DirectRLEnv):
 
         return {"policy": obs}
     
-    # Some library requires a public get_observations idk
+    # Some library requires a public get_observations
     def get_observations(self) -> dict:
         return self._get_observations()
 
@@ -247,16 +262,17 @@ class RCCarEnv(DirectRLEnv):
         reward = torch.exp(-distance * 2.0) + distance_change * 2.0
 
         # Bonus for reaching the target
-        reached = distance < _SUCCESS_RANGE
-        reward[reached] += 10.0
+        reached = distance < self.cfg.reach_threshold
+        reward[reached] += self.cfg.reach_bonus
 
         # Add per step penalty
-        reward -= 0.5
+        reward -= self.cfg.step_penalty
 
+        # Large penalty for going out of bounds
         env_origins_2d = self.scene.env_origins[:, :2]
         dist_from_origin = torch.norm(robot_pos - env_origins_2d, dim=1)
-        out_of_bounds = dist_from_origin > 4.0
-        out_of_bounds_penalty = out_of_bounds.float() * 250.0
+        out_of_bounds = dist_from_origin > self.cfg.out_of_bounds_distance
+        out_of_bounds_penalty = out_of_bounds.float() * self.cfg.out_of_bounds_penalty
         reward -= out_of_bounds_penalty
 
         self.prev_distance = distance.clone()
@@ -264,15 +280,17 @@ class RCCarEnv(DirectRLEnv):
         return reward
 
     def _get_dones(self) -> tuple[torch.Tensor, torch.Tensor]:
+        """
+        Returns done when Robot reaches target or runs out of bounds
+        """
         robot_pos = self.robot.data.root_pos_w[:, :2]
         distance = torch.norm(self.target_pos - robot_pos, dim=1)
 
-        # Done if reached target or fell out of bounds
-        reached = distance < _SUCCESS_RANGE
+        reached = distance < self.cfg.reach_threshold
 
         env_origins_2d = self.scene.env_origins[:, :2]
         dist_from_origin = torch.norm(robot_pos - env_origins_2d, dim=1)
-        out_of_bounds = dist_from_origin > 4.0
+        out_of_bounds = dist_from_origin > self.cfg.out_of_bounds_distance
 
         terminated = reached | out_of_bounds
         truncated = self.episode_length_buf >= self.max_episode_length
@@ -280,6 +298,9 @@ class RCCarEnv(DirectRLEnv):
         return terminated, truncated
 
     def _reset_idx(self, env_ids: Sequence[int] | None):
+        """
+        Reset function to be called every time an episode is complete
+        """
         if env_ids is None:
             env_ids = self.robot._ALL_INDICES
         super()._reset_idx(env_ids)
