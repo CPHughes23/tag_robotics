@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🚗 RC Car Autonomous Navigation via Reinforcement Learning
+# RC Car Autonomous Navigation via Reinforcement Learning
 
 **End-to-end pipeline for training a navigation policy in simulation and deploying it on a physical RC car**
 
@@ -124,7 +124,7 @@ and rear blob are different colors, so the direction of travel is unambiguous.
 These are combined with the known target position to produce the full observation
 vector at every inference step.
 
-> 📷 _Demo GIF coming soon_
+> _Demo GIF coming soon_
 
 ---
 
@@ -171,7 +171,7 @@ Arduino
 
 </div>
 
-> 📸 _Photos coming soon — replace `assets/car_photo.jpg` and `assets/arduino_wiring.jpg`
+> _Photos coming soon — replace `assets/car_photo.jpg` and `assets/arduino_wiring.jpg`
 > with real images and remove this note._
 
 ---
@@ -212,7 +212,7 @@ cd tag_robotics
 
 #### 2. Clone Isaac Lab at the pinned commit
 
-> ⚠️ This project targets a specific Isaac Lab commit. Using a different version may cause API errors.
+> This project targets a specific Isaac Lab commit. Using a different version may cause API errors.
 
 ```bash
 git clone https://github.com/isaac-sim/IsaacLab.git
@@ -265,7 +265,7 @@ Wait for `Isaac Sim Full App is loaded.` then exit with `Ctrl+C`.
 
 #### 6. Link the Isaac Sim runtime extensions
 
-> ⚠️ The `228` in the path below is a snap revision number — run `ls ~/snap/code/` to find yours if it differs.
+> The `228` in the path below is a snap revision number — run `ls ~/snap/code/` to find yours if it differs.
 
 ```bash
 SNAP_EXTS="$HOME/snap/code/228/.local/share/ov/data/Kit/Isaac-Sim Full/5.1/exts/3"
