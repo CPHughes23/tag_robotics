@@ -29,9 +29,10 @@ IsaacLab/
 isaac_training/config.yaml
 
 # Trained models and checkpoints
-isaac_training/models/
+isaac_training/models/trained/*
 *.pt
 *.pth
+!isaac_training/models/best/**/*
 
 # Logs
 *.log
