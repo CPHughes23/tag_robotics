@@ -32,7 +32,7 @@ isaac_training/config.yaml
 isaac_training/models/trained/*
 *.pt
 *.pth
-!isaac_training/models/best/**/*
+!isaac_training/models/best/*.pt
 
 # Logs
 *.log
@@ -40,7 +40,7 @@ runs/
 logs/
 
 # TensorBoard
-isaac_training/models/
+isaac_training/models/trained/*
 
 # Wandb
 wandb/
