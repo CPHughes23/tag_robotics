@@ -5,7 +5,7 @@ from isaaclab.app import AppLauncher # type: ignore
 parser = argparse.ArgumentParser(description="Train RC car to navigate to target")
 parser.add_argument("--num_envs", type=int, default=64, help="Number of parallel environments")
 parser.add_argument("--max_iterations", type=int, default=1000, help="Maximum training iterations")
-parser.add_argument("--checkpoint", type=str, required=True, help="Path to the .pt checkpoint file")
+parser.add_argument("--checkpoint", type=str, required=False, default=None, help="Path to the .pt checkpoint file")
 AppLauncher.add_app_launcher_args(parser)
 args_cli = parser.parse_args()
 args_cli.headless = True  # run without GUI during training
