@@ -1,20 +1,32 @@
 import cv2
 import numpy as np
-import matplotlib.pyplot as plt
+import json
 import math
+import os
 import argparse
-import hue_tuner
 
-# --- Tune these HSV values---
-BLUE_LOWER = np.array([80, 51, 159])
-BLUE_UPPER = np.array([115, 255, 255])
+CONFIG_FILE = "./robot/camera_config.json"
 
-GREEN_LOWER = np.array([40, 80, 70])
-GREEN_UPPER = np.array([80, 255, 255])
+def load_config():
+    if not os.path.exists(CONFIG_FILE):
+        raise FileNotFoundError(
+            f"'{CONFIG_FILE}' not found. Run hue_tuner.py and bbox_calibrate.py first."
+        )
+    with open(CONFIG_FILE, "r") as f:
+        return json.load(f)
 
-MIN_BLOB_AREA = 200  # Minimum pixel area to count as a valid detection (filters noise)
+# Load at startup
+config = load_config()
 
+BLUE_LOWER  = np.array(config["blue"]["lower"])
+BLUE_UPPER  = np.array(config["blue"]["upper"])
+GREEN_LOWER = np.array(config["green"]["lower"])
+GREEN_UPPER = np.array(config["green"]["upper"])
 
+px_per_car  = config["car_scale"].get("pixels_per_car_length")  # None if not calibrated yet
+MIN_BLOB_AREA = 200 # Minimum pixel area to count as a valid detection (filters noise)
+
+# ── Helpers ───────────────────────────────────────────────────────────────────
 def find_color_centroid(hsv_frame, lower, upper):
     """
     Masks the frame for a given HSV color range and returns the
@@ -45,11 +57,14 @@ def find_color_centroid(hsv_frame, lower, upper):
     cy = int(M["m01"] / M["m00"])
     return (cx, cy), mask
 
+def px_to_car_lengths(px):
+    """Convert a pixel distance to car-length units. Returns None if not calibrated."""
+    if px_per_car:
+        return px / px_per_car
+    return None
+
 
 def draw_tracking_overlay(frame, blue_center, green_center):
-    """
-    Draws the detected dot positions, the midpoint, and an orientation arrow.
-    """
     if blue_center:
         cv2.circle(frame, blue_center, 10, (255, 100, 0), -1)
         cv2.putText(frame, "B", (blue_center[0] + 12, blue_center[1]),
@@ -83,105 +98,72 @@ def draw_tracking_overlay(frame, blue_center, green_center):
         cv2.putText(frame, f"Heading: {angle_deg:.1f} deg",
                     (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
 
+        # Show scale warning if not calibrated
+        if px_per_car is None:
+            cv2.putText(frame, "Scale not calibrated - run bbox_calibrate.py",
+                        (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 100, 255), 2)
+
     return frame
 
 
-def main(show_plot=False, show_mask=False):
-    if show_plot:
-        plt.ion()
-        fig, ax = plt.subplots()
-        ax.set_title("Car Position (pixels)")
-        hl, = ax.plot([], [], 'ro', markersize=8)
-        ax.set_xlim(0, 640)
-        ax.set_ylim(0, 480)
-        ax.invert_yaxis()  # Match image coordinate system
-
+def main(show_mask=False):
     cap = cv2.VideoCapture(0)
     if not cap.isOpened():
         print("Cannot open camera")
         return
 
-    # Store last known positions so the plot doesn't blank when detection drops
-    last_blue = None
-    last_green = None
+    last_blue, last_green = None, None
 
     while True:
         ret, frame = cap.read()
         if not ret:
-            print("Connection stopped. Camera probably blew up.")
             break
 
         hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
-
-        blue_center, blue_mask = find_color_centroid(hsv, BLUE_LOWER, BLUE_UPPER)
+        blue_center,  blue_mask  = find_color_centroid(hsv, BLUE_LOWER,  BLUE_UPPER)
         green_center, green_mask = find_color_centroid(hsv, GREEN_LOWER, GREEN_UPPER)
 
-        # Fall back to last known position if detection drops for a frame
-        if blue_center:
-            last_blue = blue_center
-        if green_center:
-            last_green = green_center
+        if blue_center:  last_blue  = blue_center
+        if green_center: last_green = green_center
 
         frame = draw_tracking_overlay(frame, blue_center, green_center)
 
-        # Print and plot midpoint when both dots are visible
         if last_blue and last_green:
-            # This could be useful later but for right now we can just use one point for the position, just replce the next few parts like "last_green[0]" with mid_x
-            # mid_x = (last_blue[0] + last_green[0]) / 2
-            # mid_y = (last_blue[1] + last_green[1]) / 2
             angle = math.atan2(last_green[1] - last_blue[1],
                                last_green[0] - last_blue[0])
-            print(f"Position: ({last_green[0]:.1f}, {last_green[1]:.1f})  Heading: {math.degrees(angle):.1f} deg")
-            if show_plot:
-                hl.set_data([last_green[0]], [last_green[1]])
-                fig.canvas.draw()
-                fig.canvas.flush_events()
 
-        # Show debug masks side by side (helpful for tuning HSV ranges)
+            # Distance in pixels and in car-lengths
+            dx = last_green[0] - last_blue[0]
+            dy = last_green[1] - last_blue[1]
+            dist_px = math.sqrt(dx**2 + dy**2)
+            dist_cl = px_to_car_lengths(dist_px)
+
+            if dist_cl is not None:
+                print(f"Pos: ({last_green[0]:.1f}, {last_green[1]:.1f})  "
+                      f"Heading: {math.degrees(angle):.1f} deg  "
+                      f"Dot sep: {dist_px:.1f}px = {dist_cl:.2f} car lengths")
+            else:
+                print(f"Pos: ({last_green[0]:.1f}, {last_green[1]:.1f})  "
+                      f"Heading: {math.degrees(angle):.1f} deg  "
+                      f"Dot sep: {dist_px:.1f}px (not calibrated)")
+
         if show_mask:
-            debug_masks = cv2.hconcat([
-                cv2.cvtColor(blue_mask, cv2.COLOR_GRAY2BGR),
+            debug = cv2.hconcat([
+                cv2.cvtColor(blue_mask,  cv2.COLOR_GRAY2BGR),
                 cv2.cvtColor(green_mask, cv2.COLOR_GRAY2BGR)
             ])
-            cv2.imshow("Masks: Blue | Green", debug_masks)
-        cv2.imshow("Color Tracking", frame)
+            cv2.imshow("Masks: Blue | Green", debug)
 
+        cv2.imshow("Color Tracking", frame)
         if cv2.waitKey(1) & 0xFF == 27:
             break
-        if show_plot:
-            plt.pause(0.01)
 
     cap.release()
     cv2.destroyAllWindows()
 
-    if show_plot:
-        plt.ioff()
-        plt.close()
-
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument("--plot", action="store_true",
-                        help="Enable matplotlib plotting of car position")
-    parser.add_argument("--show-mask", action="store_true",
-                        help="Show the color masks. Useful for tuning HSV values.")
-    parser.add_argument("--calibrate", action="store_true",
-                        help="Use the hue tuner to calibrate HSV values.")
-    
+    parser.add_argument("--show-mask", action="store_true")
     args = parser.parse_args()
-
-    # Calibrate the HSV values for the colors
-    if args.calibrate:
-        print("Tuning Blue:")
-        blue_values = hue_tuner.tune_hue("Blue")
-        if blue_values:
-            BLUE_LOWER = blue_values[:2]
-            print(BLUE_LOWER)
-            BLUE_UPPER = blue_values[3:]
-        print("Tuning Green:")
-        green_values = hue_tuner.tune_hue("Green")
-        if green_values:
-            GREEN_LOWER = green_values[:2]
-            GREEN_UPPER = green_values[3:]
-
-    main(show_plot=args.plot, show_mask=args.show_mask)
+    main(show_mask=args.show_mask)

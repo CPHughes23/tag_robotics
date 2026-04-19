@@ -10,6 +10,9 @@ __pycache__/
 env/
 venv/
 
+# Config file for tracking and scaling
+robot/camera_config.json
+
 # Isaac Lab (cloned separately, not part of this repo)
 IsaacLab/
 
