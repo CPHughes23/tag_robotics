@@ -10,6 +10,9 @@ __pycache__/
 env/
 venv/
 
+# Enviorment variables
+.env
+
 # Config file for tracking and scaling
 robot/camera_config.json
 

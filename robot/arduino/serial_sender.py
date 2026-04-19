@@ -1,8 +1,15 @@
 import serial
 import time
+import os
 from pynput import keyboard
+from dotenv import load_dotenv
 
-ser = serial.Serial('/dev/cu.usbserial-2110', 9600)
+load_dotenv()
+
+SERIAL_PORT = os.getenv("SERIAL_PORT", "COM3")
+SERIAL_BAUD = int(os.getenv("SERIAL_BAUD", 9600))
+
+ser = serial.Serial(SERIAL_PORT, SERIAL_BAUD)
 time.sleep(2)
 
 STOP = b'4'

@@ -2,6 +2,10 @@ import cv2
 import numpy as np
 import json
 import os
+from dotenv import load_dotenv
+
+load_dotenv()
+CAMERA_INDEX = int(os.getenv("CAMERA_INDEX", 0))
 
 CONFIG_FILE = "./robot/camera_config.json"
 
@@ -31,7 +35,7 @@ def tune_hue(color_key="blue", specified_color=""):
     config = load_config()
     existing = config.get(color_key, {"lower": [0,0,0], "upper": [179,255,255]})
 
-    cap = cv2.VideoCapture(0)
+    cap = cv2.VideoCapture(CAMERA_INDEX)
     if not cap.isOpened():
         print("Cannot open camera")
         return None

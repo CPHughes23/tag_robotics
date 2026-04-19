@@ -3,6 +3,11 @@ import logging
 import cv2
 import json
 import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
+CAMERA_INDEX = int(os.getenv("CAMERA_INDEX", 0))
 
 CONFIG_FILE = "./robot/camera_config.json"
 TARGET_LABELS = {"skateboard"}
@@ -27,7 +32,7 @@ def save_scale(width_px, height_px):
 def main():
     model = YOLO("yolov8n.pt")
     logging.getLogger("ultralytics").setLevel(logging.ERROR) # Prevent printing for each frame
-    cap = cv2.VideoCapture(0)
+    cap = cv2.VideoCapture(CAMERA_INDEX)
 
     print("When you see a good bounding box, press 's' to save the scale.")
     print("Press ESC to quit.")

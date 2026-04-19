@@ -4,6 +4,11 @@ import json
 import math
 import os
 import argparse
+from dotenv import load_dotenv
+
+load_dotenv()
+
+CAMERA_INDEX = int(os.getenv("CAMERA_INDEX", 0))
 
 CONFIG_FILE = "./robot/camera_config.json"
 
@@ -107,7 +112,7 @@ def draw_tracking_overlay(frame, blue_center, green_center):
 
 
 def main(show_mask=False):
-    cap = cv2.VideoCapture(0)
+    cap = cv2.VideoCapture(CAMERA_INDEX)
     if not cap.isOpened():
         print("Cannot open camera")
         return
