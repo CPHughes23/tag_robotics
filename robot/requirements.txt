@@ -13,6 +13,11 @@ Pillow==11.3.0
 # Robot
 opencv-python==4.13.0.92
 pyserial
+python-dotenv==1.2.2
+ultralytics==8.4.39
+
+# Input
+pynput==1.8.1
 
 # Visualization
 matplotlib==3.10.8
