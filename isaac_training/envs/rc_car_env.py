@@ -171,15 +171,24 @@ class RCCarEnv(DirectRLEnv):
                     )
 
     def _pre_physics_step(self, actions: torch.Tensor):
-        """
-        Clamps forward/backward to [-1,1]
-        Clamps steering angle to [-0.5, 0.5]
-        """
+        if not hasattr(self, '_action_map'):
+            self._action_map = torch.tensor([
+                [ 1.0,  0.0], [ 1.0, -0.5], [ 1.0,  0.5],
+                [-1.0,  0.0], [-1.0, -0.5], [-1.0,  0.5],
+                [ 0.0,  0.0],
+            ], device=self.device)
 
-        steer_angle = self.cfg.steering_angle
-        actions[:, 0] = torch.clamp(actions[:, 0], -1, 1)
-        actions[:, 1] = torch.clamp(actions[:, 1], -steer_angle, steer_angle)
-        self.actions = actions.clone()
+        # Treat action[:,0] as drive signal, action[:,1] as steer signal
+        # Snap each to nearest discrete value
+        drive = actions[:, 0]
+        steer = actions[:, 1]
+
+        drive_disc = torch.where(drive > 0.33, 1.0, torch.where(drive < -0.33, -1.0, 0.0))
+        steer_disc = torch.where(steer > 0.17, 0.5, torch.where(steer < -0.17, -0.5, 0.0))
+
+        self.actions = torch.stack([drive_disc, steer_disc], dim=1)
+
+        # print("Discretized actions:", self.actions[:5])
 
     def _apply_action(self):
         """
@@ -250,7 +259,9 @@ class RCCarEnv(DirectRLEnv):
         local_y = -sin_yaw * to_target[:, 0:1] + cos_yaw * to_target[:, 1:2]
         local_to_target = torch.cat([local_x, local_y], dim=1)
 
-        distance = torch.norm(to_target, dim=1, keepdim=True)   # shape (64, 1)
+        car_length = 0.32
+        distance = torch.norm(to_target, dim=1, keepdim=True) / car_length  # shape (64, 1), normalized by car length
+        print(f"Distance: {distance[:5]} car lengths")
 
         obs = torch.cat([robot_heading, local_to_target, distance], dim=1)
         
@@ -265,26 +276,92 @@ class RCCarEnv(DirectRLEnv):
 
     def _get_rewards(self) -> torch.Tensor:
         robot_pos = self.robot.data.root_pos_w[:, :2]
-        distance = torch.norm(self.target_pos - robot_pos, dim=1)
+        distance  = torch.norm(self.target_pos - robot_pos, dim=1)
 
-        distance_change = self.prev_distance - distance
-        reward = torch.exp(-distance * 2.0) + distance_change * 2.0
+        vel         = self.robot.data.root_lin_vel_w[:, :2]
+        speed       = torch.norm(vel, dim=1)
 
-        # Bonus for reaching the target
+        # --- Lazy init guard ---
+        if not hasattr(self, 'prev_distance'):
+            self.prev_distance  = distance.clone()
+        if not hasattr(self, 'prev_speed'):
+            self.prev_speed     = speed.clone()
+        if not hasattr(self, 'prev_direction'):
+            self.prev_direction = torch.zeros(self.num_envs, device=self.device)
+        ang_vel     = self.robot.data.root_ang_vel_w[:, 2]
+
+        quat    = self.robot.data.root_quat_w
+        siny    = 2.0 * (quat[:, 0] * quat[:, 3] + quat[:, 1] * quat[:, 2])
+        cosy    = 1.0 - 2.0 * (quat[:, 2] ** 2 + quat[:, 3] ** 2)
+        heading = torch.atan2(siny, cosy)
+
+        heading_vec  = torch.stack([torch.cos(heading), torch.sin(heading)], dim=1)
+        signed_speed = (vel * heading_vec).sum(dim=1)   # + forward, - reverse
+
+        #  1. potential shaping: smooth pull toward target, no sign flips
+        potential      = torch.exp(-distance * 1.5)
+        prev_potential = torch.exp(-self.prev_distance * 1.5)
+        reward = (potential - prev_potential) * 4.0
+
+        #  2. heading reward: only fires when actually moving
+        to_target    = self.target_pos - robot_pos
+        target_angle = torch.atan2(to_target[:, 1], to_target[:, 0])
+        angle_error  = torch.atan2(
+            torch.sin(target_angle - heading),
+            torch.cos(target_angle - heading)
+        )
+        forward_align = torch.cos(angle_error)
+        reverse_align = torch.cos(angle_error + torch.pi)
+        best_align    = torch.max(forward_align, reverse_align)
+
+        # Only reward heading when moving AND far enough to matter
+        # prevents obsessing over alignment at the goal
+        moving          = speed > 0.05
+        far_from_target = distance > self.cfg.reach_threshold * 2.0
+        heading_scale   = torch.clamp(distance / 0.8, 0.0, 1.0)
+        reward += best_align * heading_scale * moving.float() * far_from_target.float() * 0.4
+
+        #  3. velocity toward target: reward purposeful movement
+        # Project velocity directly onto the to-target vector (unit)
+        to_target_dist = distance.unsqueeze(1).clamp(min=1e-6)
+        to_target_unit = to_target / to_target_dist
+        vel_toward      = (vel * to_target_unit).sum(dim=1)   # + = moving toward
+
+        # Only reward this when not already at target
+        reward += vel_toward * far_from_target.float() * 0.3
+
+        #  4. goal zone: reward staying, punish leaving
         reached = distance < self.cfg.reach_threshold
-        reward[reached] += self.cfg.reach_bonus
 
-        # Add per step penalty
-        reward -= self.cfg.step_penalty
+        # Per-step bonus for being at goal (rewards fast arrival too,
+        # since more steps at goal = more bonus)
+        reward += reached.float() * self.cfg.reach_bonus
 
-        # Large penalty for going out of bounds
-        env_origins_2d = self.scene.env_origins[:, :2]
+        # Punish any movement once inside the goal — kills the jitter loop
+        reward -= reached.float() * speed * 2.0
+
+        #  5. reversal penalty: break the forward/reverse oscillation
+        direction = torch.sign(signed_speed)
+        # Only count a reversal when actually moving both steps
+        both_moving = (speed > 0.05) & (self.prev_speed > 0.05)
+        reversal    = both_moving & ((direction * self.prev_direction) < 0)
+        reward     -= reversal.float() * 0.3
+
+        #  6. efficiency: small time penalty to encourage fast arrival
+        # Scaled by distance so the penalty is lighter near the goal
+        # (avoids punishing careful final approach)
+        reward -= self.cfg.step_penalty * torch.clamp(distance / 2.0, 0.1, 1.0)
+
+        #  7. out of bounds
+        env_origins_2d   = self.scene.env_origins[:, :2]
         dist_from_origin = torch.norm(robot_pos - env_origins_2d, dim=1)
-        out_of_bounds = dist_from_origin > self.cfg.out_of_bounds_distance
-        out_of_bounds_penalty = out_of_bounds.float() * self.cfg.out_of_bounds_penalty
-        reward -= out_of_bounds_penalty
+        out_of_bounds    = dist_from_origin > self.cfg.out_of_bounds_distance
+        reward          -= out_of_bounds.float() * self.cfg.out_of_bounds_penalty
 
-        self.prev_distance = distance.clone()
+        #  8. for future calculations
+        self.prev_distance  = distance.clone()
+        self.prev_direction = direction.clone()
+        self.prev_speed     = speed.clone()
 
         return reward
 
