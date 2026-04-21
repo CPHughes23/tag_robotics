@@ -19,6 +19,7 @@ from isaaclab_rl.rsl_rl import RslRlOnPolicyRunnerCfg, RslRlPpoActorCriticCfg, R
 from rsl_rl.runners import OnPolicyRunner
 from envs.rc_car_env import RCCarEnv, RCCarEnvCfg
 from train_cfg import train_cfg_dict
+from isaaclab.envs import DirectMARLEnv, multi_agent_to_single_agent
 
 
 
@@ -29,6 +30,9 @@ def main():
 
     # Create environment
     env = RCCarEnv(cfg=env_cfg)
+
+    if isinstance(env.unwrapped, DirectMARLEnv):
+        env = multi_agent_to_single_agent(env)
     wrapped_env = RslRlVecEnvWrapper(env)
 
     # Create output directory for saved models

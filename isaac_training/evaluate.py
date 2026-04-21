@@ -16,12 +16,15 @@ from rsl_rl.runners import OnPolicyRunner
 from isaaclab_rl.rsl_rl import RslRlVecEnvWrapper # type: ignore
 from envs.rc_car_env import RCCarEnv, RCCarEvalEnvCfg
 from train_cfg import train_cfg_dict
+from isaaclab.envs import DirectMARLEnv, multi_agent_to_single_agent
 
 def main():
     try:
         env_cfg = RCCarEvalEnvCfg()
         env_cfg.scene.num_envs = args_cli.num_envs
         env = RCCarEnv(cfg=env_cfg, render_mode="human")
+        if isinstance(env.unwrapped, DirectMARLEnv):
+            env = multi_agent_to_single_agent(env)
         wrapped_env = RslRlVecEnvWrapper(env)
 
         import omni.usd #type: ignore
