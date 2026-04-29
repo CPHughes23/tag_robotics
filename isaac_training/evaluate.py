@@ -1,60 +1,55 @@
 import argparse
 from isaaclab.app import AppLauncher # type: ignore
 
-parser = argparse.ArgumentParser(description="Evaluate trained RC car policy")
-parser.add_argument("--checkpoint", type=str, required=True, help="Path to the .pt checkpoint file")
+parser = argparse.ArgumentParser(description="Evaluate trained tag policies")
+parser.add_argument("--chaser_checkpoint", type=str, required=True, help="Path to chaser_actor.pt")
+parser.add_argument("--runner_checkpoint", type=str, required=True, help="Path to runner_actor.pt")
 parser.add_argument("--num_envs", type=int, default=1, help="Number of environments to visualize")
 AppLauncher.add_app_launcher_args(parser)
 args_cli = parser.parse_args()
 app_launcher = AppLauncher(args_cli)
 simulation_app = app_launcher.app
 
+import copy
 import torch
-import traceback
-from rsl_rl.models import MLPModel
 from rsl_rl.runners import OnPolicyRunner
 from isaaclab_rl.rsl_rl import RslRlVecEnvWrapper # type: ignore
 from envs.rc_car_env import RCCarEnv, RCCarEvalEnvCfg
+from envs.single_agent_wrapper import SingleAgentWrapper
 from train_cfg import train_cfg_dict
-from isaaclab.envs import DirectMARLEnv, multi_agent_to_single_agent
+
+
+def load_policy(env, agent_name, checkpoint_path):
+    """Build an actor with the correct architecture then load saved weights."""
+    wrapped = SingleAgentWrapper(env, active_agent=agent_name, frozen_policy=None)
+    wrapped_env = RslRlVecEnvWrapper(wrapped)
+    runner = OnPolicyRunner(wrapped_env, copy.deepcopy(train_cfg_dict), log_dir=None, device="cuda:0")
+    state_dict = torch.load(checkpoint_path, map_location="cuda:0")
+    runner.alg.actor.load_state_dict(state_dict)
+    policy = runner.alg.actor
+    policy.eval()
+    return policy
+
 
 def main():
-    try:
-        env_cfg = RCCarEvalEnvCfg()
-        env_cfg.scene.num_envs = args_cli.num_envs
-        env = RCCarEnv(cfg=env_cfg, render_mode="human")
-        if isinstance(env.unwrapped, DirectMARLEnv):
-            env = multi_agent_to_single_agent(env)
-        wrapped_env = RslRlVecEnvWrapper(env)
+    env_cfg = RCCarEvalEnvCfg()
+    env_cfg.scene.num_envs = args_cli.num_envs
+    env = RCCarEnv(cfg=env_cfg, render_mode="human")
 
-        import omni.usd #type: ignore
-        stage = omni.usd.get_context().get_stage()
-        for prim in stage.Traverse():
-            if "Robot" in prim.GetPath().pathString:
-                print(prim.GetPath())
+    chaser_policy = load_policy(env, "chaser", args_cli.chaser_checkpoint)
+    runner_policy = load_policy(env, "runner", args_cli.runner_checkpoint)
 
-        # Load checkpoint
-        checkpoint = torch.load(args_cli.checkpoint, map_location="cuda:0")
-        print(f"Loaded checkpoint from iteration: {checkpoint['iter']}")
+    obs, _ = env.reset()
 
-        # Reconstruct the actor from saved state
-        runner = OnPolicyRunner(wrapped_env, train_cfg_dict, log_dir=None, device="cuda:0")
-        runner.load(args_cli.checkpoint)
-        policy = runner.alg.actor
-        policy.eval()
+    print("Running evaluation. Press Ctrl+C to stop.")
+    with torch.inference_mode():
+        while simulation_app.is_running():
+            chaser_actions = chaser_policy({"policy": obs["chaser"]})
+            runner_actions = runner_policy({"policy": obs["runner"]})
+            obs, _, _, _, _ = env.step({"chaser": chaser_actions, "runner": runner_actions})
 
-        print("Running evaluation. Watch the Isaac Sim viewport.")
-        print("Press Ctrl+C to stop.")
+    env.close()
 
-        with torch.inference_mode():
-            while simulation_app.is_running():
-                obs = wrapped_env.get_observations().to("cuda:0")
-                # print(obs["policy"][:4])
-                actions = runner.alg.act(obs)
-                wrapped_env.step(actions)
-    except Exception as e:
-        print(f"ERROR: {e}")
-        traceback.print_exc()
 
 main()
 simulation_app.close()
