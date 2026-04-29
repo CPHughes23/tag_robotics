@@ -25,7 +25,7 @@ class RCCarEnvCfg(DirectMARLEnvCfg):
     episode_length_s = 30.0
     possible_agents = ["runner", "chaser"]
     action_spaces = {"runner": 2, "chaser": 2} # drive velocity + steer angle
-    observation_spaces = {"runner": 5, "chaser": 5} # heading + target x and y + distance
+    observation_spaces = {"runner": 4, "chaser": 4} # heading + target x and y + distance
     state_space = 0 # not relevant but needed
 
     sim: SimulationCfg = SimulationCfg(dt=0.01, render_interval=decimation)
@@ -92,7 +92,7 @@ class RCCarEnvCfg(DirectMARLEnvCfg):
 
     # environment Boundaries
     out_of_bounds_distance = 4.0
-    car_spawn_range = 4.0
+    car_spawn_range = 2.0
 
     # reward parameters
     reach_threshold = 0.5
@@ -283,8 +283,8 @@ class RCCarEnv(DirectMARLEnv):
 
         chaser_distance = torch.norm(chaser_to_target, dim=1, keepdim=True)   # shape (64, 1)
 
-        runner_obs = torch.cat([torch.ones(self.num_envs, device=self.device).unsqueeze(1), runner_heading, runner_local_to_target, runner_distance], dim=1)
-        chaser_obs = torch.cat([torch.ones(self.num_envs, device=self.device).unsqueeze(1) * -1, chaser_heading, chaser_local_to_target, chaser_distance], dim=1)
+        runner_obs = torch.cat([runner_heading, runner_local_to_target, runner_distance], dim=1)
+        chaser_obs = torch.cat([chaser_heading, chaser_local_to_target, chaser_distance], dim=1)
 
         return {'runner':runner_obs, 'chaser':chaser_obs}
     
@@ -379,4 +379,5 @@ class RCCarEnv(DirectMARLEnv):
 
         runner_pos = runner_default_root_state[:, :2]
         chaser_pos = chaser_default_root_state[:, :2]
+        self.prev_distance = self.prev_distance.clone()
         self.prev_distance[env_ids] = torch.norm(runner_pos - chaser_pos, dim=1)
