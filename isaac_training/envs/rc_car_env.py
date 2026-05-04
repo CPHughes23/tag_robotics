@@ -146,6 +146,8 @@ class RCCarEnvCfg(DirectMARLEnvCfg):
     out_of_bounds_penalty = 250.0
     step_penalty = 0.5
 
+    car_length = 0.32
+
 
 @configclass
 class RCCarEnvCfgLargeRunner(RCCarEnvCfg):
@@ -297,7 +299,7 @@ class RCCarEnv(DirectMARLEnv):
         runner_to_target = chaser_pos - runner_pos
         runner_local_x =  runner_cos_yaw * runner_to_target[:, 0:1] + runner_sin_yaw * runner_to_target[:, 1:2]
         runner_local_y = -runner_sin_yaw * runner_to_target[:, 0:1] + runner_cos_yaw * runner_to_target[:, 1:2]
-        runner_distance = torch.norm(runner_to_target, dim=1, keepdim=True)
+        runner_distance = torch.norm(runner_to_target, dim=1, keepdim=True) / self.cfg.car_length
 
         chaser_quat = self.chaser.data.root_quat_w
         chaser_siny = 2.0 * (chaser_quat[:, 0] * chaser_quat[:, 3] + chaser_quat[:, 1] * chaser_quat[:, 2])
@@ -309,7 +311,7 @@ class RCCarEnv(DirectMARLEnv):
         chaser_to_target = runner_pos - chaser_pos
         chaser_local_x =  chaser_cos_yaw * chaser_to_target[:, 0:1] + chaser_sin_yaw * chaser_to_target[:, 1:2]
         chaser_local_y = -chaser_sin_yaw * chaser_to_target[:, 0:1] + chaser_cos_yaw * chaser_to_target[:, 1:2]
-        chaser_distance = torch.norm(chaser_to_target, dim=1, keepdim=True)
+        chaser_distance = torch.norm(chaser_to_target, dim=1, keepdim=True) / self.cfg.car_length
 
         runner_obs = torch.cat([runner_heading, runner_local_x, runner_local_y, runner_distance], dim=1)
         chaser_obs = torch.cat([chaser_heading, chaser_local_x, chaser_local_y, chaser_distance], dim=1)
@@ -322,7 +324,7 @@ class RCCarEnv(DirectMARLEnv):
     def _get_rewards(self) -> dict[str, torch.Tensor]:
         runner_pos = self.runner.data.root_pos_w[:, :2]
         chaser_pos = self.chaser.data.root_pos_w[:, :2]
-        distance = torch.norm(runner_pos - chaser_pos, dim=1)
+        distance = torch.norm(runner_pos - chaser_pos, dim=1) / self.cfg.car_length
 
         distance_change = self.prev_distance - distance
         chaser_reward = torch.exp(-distance * 2.0) + distance_change * 2.0
@@ -359,8 +361,8 @@ class RCCarEnv(DirectMARLEnv):
         reached = distance < self.cfg.reach_threshold
 
         env_origins_2d = self.scene.env_origins[:, :2]
-        runner_dist  = torch.norm(runner_pos - env_origins_2d, dim=1)
-        chaser_dist  = torch.norm(chaser_pos - env_origins_2d, dim=1)
+        runner_dist  = torch.norm(runner_pos - env_origins_2d, dim=1) / self.cfg.car_length
+        chaser_dist  = torch.norm(chaser_pos - env_origins_2d, dim=1) / self.cfg.car_length
         out_of_bounds = (runner_dist > self.cfg.out_of_bounds_distance) | \
                         (chaser_dist > self.cfg.out_of_bounds_distance)
 
@@ -392,4 +394,4 @@ class RCCarEnv(DirectMARLEnv):
         self.prev_distance = self.prev_distance.clone()
         self.prev_distance[env_ids] = torch.norm(
             runner_state[:, :2] - chaser_state[:, :2], dim=1
-        )
+        ) / self.cfg.car_length
