@@ -1,5 +1,4 @@
 import argparse
-import tensordict # had to preload this to avoid error
 from isaaclab.app import AppLauncher # type: ignore
 
 parser = argparse.ArgumentParser(description="Evaluate trained RC car policy")
