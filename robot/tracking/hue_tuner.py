@@ -9,6 +9,8 @@ CAMERA_INDEX = int(os.getenv("CAMERA_INDEX", 0))
 
 CONFIG_FILE = "./robot/camera_config.json"
 
+VALID_COLORS = ("blue", "green", "yellow", "pink")
+
 def nothing(x):
     pass
 
@@ -17,8 +19,10 @@ def load_config():
         with open(CONFIG_FILE, "r") as f:
             return json.load(f)
     return {
-        "blue":  {"lower": [0, 0, 0],     "upper": [179, 255, 255]},
-        "green": {"lower": [0, 0, 0],     "upper": [179, 255, 255]},
+        "blue":   {"lower": [0, 0, 0], "upper": [179, 255, 255]},
+        "green":  {"lower": [0, 0, 0], "upper": [179, 255, 255]},
+        "yellow": {"lower": [0, 0, 0], "upper": [179, 255, 255]},
+        "pink":   {"lower": [0, 0, 0], "upper": [179, 255, 255]},
         "car_scale": {"width_px": None, "height_px": None, "pixels_per_car_length": None}
     }
 
@@ -33,7 +37,7 @@ def tune_hue(color_key="blue", specified_color=""):
     Press 's' to save to config. Press ESC to quit without saving.
     """
     config = load_config()
-    existing = config.get(color_key, {"lower": [0,0,0], "upper": [179,255,255]})
+    existing = config.get(color_key, {"lower": [0, 0, 0], "upper": [179, 255, 255]})
 
     cap = cv2.VideoCapture(CAMERA_INDEX)
     if not cap.isOpened():
@@ -108,9 +112,10 @@ def tune_hue(color_key="blue", specified_color=""):
 
 
 def main():
-    print("Which color to tune? (blue/green)")
+    print(f"Which color to tune? ({'/'.join(VALID_COLORS)})")
     color_key = input("> ").strip().lower()
-    if color_key not in ("blue", "green"):
+    if color_key not in VALID_COLORS:
+        print(f"Invalid color. Defaulting to 'blue'.")
         color_key = "blue"
     tune_hue(color_key=color_key, specified_color=color_key.capitalize())
 
