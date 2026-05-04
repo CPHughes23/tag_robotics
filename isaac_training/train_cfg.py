@@ -10,7 +10,7 @@ train_cfg_dict = {
     "max_iterations": 3000,
     "save_interval": 100,
     "experiment_name": "rc_car",
-    "empirical_normalization": False,
+    "empirical_normalization": True,
     "obs_groups": {
         "actor": ["policy"],
         "critic": ["policy"],
