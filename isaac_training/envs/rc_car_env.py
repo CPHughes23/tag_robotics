@@ -89,6 +89,7 @@ class RCCarEnvCfg(DirectMARLEnvCfg):
     # fixed car parameters
     drive_speed    = 37.5 # 1.5 m/s / 0.04m (wheel raduis)
     steering_angle = 0.5
+    car_length = 0.32
 
     # environment Boundaries
     out_of_bounds_distance = 4.0
@@ -192,20 +193,24 @@ class RCCarEnv(DirectMARLEnv):
                     )
 
     def _pre_physics_step(self, actions: dict[str, torch.Tensor]):
-        """
-        Clamps forward/backward to [-1,1]
-        Clamps steering angle to [-0.5, 0.5]
-        This can be cleaner by extracting actions[runner] and actions[chaser] first
-        """
-
         steer_angle = self.cfg.steering_angle
-        actions['runner'][:, 0] = torch.clamp(actions['runner'][:, 0], -1, 1)
-        actions['chaser'][:, 0] = torch.clamp(actions['chaser'][:, 0], -1, 1)
-        actions['runner'][:, 1] = torch.clamp(actions['runner'][:, 1], -steer_angle, steer_angle)
-        actions['chaser'][:, 1] = torch.clamp(actions['chaser'][:, 1], -steer_angle, steer_angle)
+
+        runner_drive = actions['runner'][:, 0]
+        runner_steer = actions['runner'][:, 1]
+
+        runner_drive_disc = torch.where(runner_drive > 0.33, 1.0, torch.where(runner_drive < -0.33, -1.0, 0.0))
+        runner_steer_disc = torch.where(runner_steer > 0.17, 0.5, torch.where(runner_steer < -0.17, -0.5, 0.0))
+
+        chaser_drive = actions['chaser'][:, 0]
+        chaser_steer = actions['chaser'][:, 1]
+
+        chaser_drive_disc = torch.where(chaser_drive > 0.33, 1.0, torch.where(chaser_drive < -0.33, -1.0, 0.0))
+        chaser_steer_disc = torch.where(chaser_steer > 0.17, 0.5, torch.where(chaser_steer < -0.17, -0.5, 0.0))
+
 
         self.runner_actions = actions['runner'].clone()
         self.chaser_actions = actions['chaser'].clone()
+        
 
     def _apply_action(self):
         """
